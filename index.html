@@ -1,0 +1,815 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Interactive stereonet with a linked 3D sphere. Import CSV or TXT, intersections, rake, density contours, girdle and beta axis.">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>Stereonet Workbench</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout: instrument bench. Two linked views on top (3D bowl + stereonet), data and analysis below. */
+:root{
+  --bg:#e9ece7; --panel:#f7f8f5; --plot:#fdfdfb; --ink:#1c2420; --muted:#5a6660; --line:#c6cdc6; --grid:#d9ded8;
+  --faint:#737d77; --accent:#2a5d9e; --brass:#a9821a; --danger:#a3343f; --bowl:#c9d3cc; --glass:rgba(42,93,158,0.06);
+  --hlPlane:#1d6a8e; --hlPole:#e0682f;
+  --s1:#2a5d9e; --s2:#b4552d; --s3:#2f8a5b; --s4:#8a4fa3; --s5:#a9821a; --s6:#c03a6b; --s7:#3c8c99; --s8:#5f6b2e;
+  --f-display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"Source Sans 3","Segoe UI",system-ui,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#121614; --panel:#1a201c; --plot:#161b18; --ink:#e3e8e3; --muted:#9aa69e; --line:#333c36; --grid:#283029;
+  --faint:#848f88; --accent:#7ea7e8; --brass:#d9b64e; --danger:#e07580; --bowl:#3a4640; --glass:rgba(126,167,232,0.07);
+  --hlPlane:#4fa6d1; --hlPole:#f2884f;
+  --s1:#7ea7e8; --s2:#e58a5f; --s3:#62c48e; --s4:#c08ad8; --s5:#d9b64e; --s6:#ec79a3; --s7:#6cc4d0; --s8:#a9b86a;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121614; --panel:#1a201c; --plot:#161b18; --ink:#e3e8e3; --muted:#9aa69e; --line:#333c36; --grid:#283029;
+  --faint:#848f88; --accent:#7ea7e8; --brass:#d9b64e; --danger:#e07580; --bowl:#3a4640; --glass:rgba(126,167,232,0.07);
+  --hlPlane:#4fa6d1; --hlPole:#f2884f;
+  --s1:#7ea7e8; --s2:#e58a5f; --s3:#62c48e; --s4:#c08ad8; --s5:#d9b64e; --s6:#ec79a3; --s7:#6cc4d0; --s8:#a9b86a;
+  color-scheme:dark}
+:root[data-paper="white"]{--bg:#ffffff; --panel:#ffffff; --plot:#ffffff; --grid:#e4e7e4; --line:#d6dbd6; --bowl:#d3d9d6}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:18px 40px}
+.wrap{max-width:1440px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+h1{font-family:var(--f-display);font-weight:700;font-size:2rem;letter-spacing:.02em;margin:0;line-height:1;text-wrap:balance}
+h1 small{display:block;font-family:var(--f-body);font-weight:400;font-size:.9rem;color:var(--muted);letter-spacing:0;margin-top:6px}
+h2{font-family:var(--f-display);font-weight:600;font-size:1.05rem;text-transform:uppercase;letter-spacing:.08em;margin:0;color:var(--ink)}
+h3{font-family:var(--f-display);font-weight:600;font-size:.85rem;text-transform:uppercase;letter-spacing:.08em;margin:0;color:var(--muted)}
+.views{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+.work{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:900px){.views,.work{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;display:flex;flex-direction:column;min-width:0}
+.phead{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.pbody{padding:12px 14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.canvas-box{position:relative;width:100%;aspect-ratio:1/1;max-width:100%}
+.canvas-box canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#sphere{cursor:grab}#sphere.drag{cursor:grabbing}
+#net{cursor:crosshair}
+.readout{font-family:var(--f-mono);font-size:12px;color:var(--muted);min-height:1.4em;padding:0 14px 10px;font-variant-numeric:tabular-nums}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tools{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px 14px}
+label.chk{display:flex;gap:7px;align-items:center;font-size:14px;cursor:pointer}
+label.fld{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+select,input[type=text],input[type=number],textarea{font:inherit;font-size:14px;color:var(--ink);background:var(--plot);border:1px solid var(--line);border-radius:4px;padding:5px 8px}
+textarea{font-family:var(--f-mono);font-size:13px;width:100%;min-height:96px;resize:vertical}
+button{font:inherit;font-size:14px;font-weight:600;color:var(--ink);background:var(--plot);border:1px solid var(--line);border-radius:4px;padding:5px 12px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);color:var(--panel);border-color:var(--accent)}
+button.ghost{background:transparent}
+button.small{font-size:12px;padding:3px 8px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.seg button{border:0;border-radius:0;font-weight:500;font-size:13px;background:transparent;padding:4px 10px}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--panel)}
+.drop{border:1px dashed var(--line);border-radius:6px;padding:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.dhint{display:flex;flex-direction:column;gap:6px;min-width:0;max-width:60ch}
+pre.ex{margin:0;font-family:var(--f-mono);font-size:12px;background:var(--plot);border:1px solid var(--line);border-radius:4px;padding:6px 10px;width:max-content;max-width:100%;overflow-x:auto}
+.drop{cursor:help}
+.drop.over{border-color:var(--accent);background:var(--glass)}
+.hint{font-size:13px;color:var(--muted)}
+.msg{font-size:13px;font-family:var(--f-mono);color:var(--muted);white-space:pre-wrap}
+.msg.err{color:var(--danger)}
+.sets{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:2px 10px 2px 6px;font-size:13px;cursor:pointer;background:var(--plot)}
+.chip i{width:12px;height:12px;border-radius:50%;display:inline-block}
+.chip.off{opacity:.45;text-decoration:line-through}
+.tablebox{max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:4px}
+table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+th{position:sticky;top:0;background:var(--panel);text-align:left;font-family:var(--f-display);font-weight:600;text-transform:uppercase;letter-spacing:.06em;font-size:12px;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line)}
+td{padding:4px 8px;border-bottom:1px solid var(--grid);white-space:nowrap}
+input.sw{-webkit-appearance:none;appearance:none;width:18px;height:18px;padding:0;border:1px solid var(--line);border-radius:3px;background:none;cursor:pointer;vertical-align:-4px;margin-right:4px}
+input.sw::-webkit-color-swatch-wrapper{padding:0}input.sw::-webkit-color-swatch{border:0;border-radius:2px}input.sw::-moz-color-swatch{border:0;border-radius:2px}
+.guide>summary{cursor:pointer;list-style:none;border-bottom:0}
+.guide>summary::-webkit-details-marker{display:none}
+.guide>summary h2::before{content:"";display:inline-block;width:0;height:0;border-left:6px solid currentColor;border-top:5px solid transparent;border-bottom:5px solid transparent;margin-right:9px;vertical-align:2px;transition:transform .15s}
+.guide[open]>summary h2::before{transform:rotate(90deg)}
+.guide[open]>summary{border-bottom:1px solid var(--line)}
+.howto{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.howto>div{border:1px solid var(--line);border-radius:4px;padding:10px 12px;background:var(--plot)}
+.howto p{margin:4px 0 0;font-size:13.5px;max-width:65ch}
+.groups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:stretch}
+@media (max-width:1000px){.groups{grid-template-columns:minmax(0,1fr)}}
+.stack{display:grid;grid-template-rows:auto 1fr;gap:12px;min-width:0}
+.grp .trow{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
+.rotrow{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:end;gap:8px}
+.rotfld input{width:100%;min-width:0}
+.hdrtoggles{gap:6px 16px}
+.tbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:8px 14px;border-bottom:1px solid var(--line);min-height:48px}
+.phead{min-height:46px}
+.dl{position:relative}
+.hright{gap:6px;flex-wrap:nowrap}
+.sl{display:inline-flex;align-items:center;gap:5px;font-size:13.5px;white-space:nowrap}
+.sl input{width:56px}
+.sl .mono{font-family:var(--f-mono);font-size:11px;min-width:2.6em}
+.tbar.sph{gap:6px 10px}
+.tbar.sph .chk{font-size:13.5px;gap:5px}
+.iconbtn{background:transparent;border:1px solid transparent;padding:4px;line-height:0;color:var(--muted)}
+.iconbtn:hover,.iconbtn[aria-expanded="true"]{color:var(--accent);border-color:var(--line)}
+.dlmenu{position:absolute;right:0;top:calc(100% + 4px);z-index:20;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px;display:flex;flex-direction:column;gap:4px;min-width:190px;box-shadow:0 6px 20px rgba(0,0,0,.18)}
+.dlmenu button{text-align:left;font-weight:500;font-size:13px}
+.modal{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:10px;max-width:min(560px,100%);max-height:100%;overflow:auto}
+.modal img{max-width:100%;height:auto;border:1px solid var(--line);background-image:linear-gradient(45deg,var(--grid) 25%,transparent 25%,transparent 75%,var(--grid) 75%),linear-gradient(45deg,var(--grid) 25%,transparent 25%,transparent 75%,var(--grid) 75%);background-size:16px 16px;background-position:0 0,8px 8px}
+a.btnlink{display:inline-block;font-size:13px;font-weight:600;padding:4px 12px;border-radius:4px;background:var(--accent);color:var(--panel);text-decoration:none}
+footer.credit{font-size:11.5px;color:var(--faint);text-align:center;padding-top:10px;letter-spacing:.02em}
+
+.grp{border:1px solid var(--line);border-radius:4px;padding:10px 12px;display:flex;flex-direction:column;gap:7px;min-width:0}
+.grp h3{color:var(--ink)}
+.gdesc{margin:0;font-size:13px;color:var(--muted)}
+.trow{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 10px;border-top:1px solid var(--grid);padding-top:7px}
+.rotrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.st{font-size:12.5px;color:var(--muted);min-height:1.2em}
+.st.ok{color:var(--ink)}.st.warn{color:var(--danger)}
+.note{margin:0;font-size:13px;color:var(--danger)}
+.sub{font-size:12px;color:var(--muted);margin-top:4px}
+.addmsg{font-size:13px;color:var(--accent);border:1px solid var(--accent);border-radius:4px;padding:6px 10px}
+button.addb{color:var(--accent);border-color:var(--accent);margin-left:6px}
+.seg.scope button{font-size:12px;padding:3px 9px}
+button.eye{background:transparent;border:0;padding:2px;color:var(--muted);line-height:0;cursor:pointer}button.eye:hover{color:var(--accent)}button.eye.off{color:var(--danger)}
+tr.hid td:not(:nth-child(2)){opacity:.45}
+.setname{cursor:text;border-bottom:1px dotted transparent}.setname:hover{border-bottom-color:var(--muted)}
+input.setin{font-size:13px;padding:2px 6px;width:12em;max-width:100%}
+td.mono{font-family:var(--f-mono);font-size:12.5px}
+tr.sel td{background:var(--glass)}
+tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--brass)}
+.res{display:flex;flex-direction:column;gap:12px}
+.card{border:1px solid var(--line);border-radius:4px;padding:10px 12px;background:var(--plot);display:flex;flex-direction:column;gap:6px;min-width:0}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 14px;font-size:13.5px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;font-family:var(--f-mono);font-size:13px;font-variant-numeric:tabular-nums}
+.legend{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);font-family:var(--f-mono)}
+.legend canvas{width:140px;height:10px;border-radius:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <h1>Stereonet Workbench<small>Lower hemisphere. Planes, poles, lines, intersections and pole density, linked between the 3D sphere and the net.</small></h1>
+  <div class="row" style="gap:16px">
+   <div class="row">
+    <span class="hint">Page</span>
+    <div class="seg" id="themeSeg">
+      <button id="thA" data-m="auto" aria-pressed="true">Auto</button>
+      <button id="thW" data-m="white" aria-pressed="false">White</button>
+      <button id="thD" data-m="dark" aria-pressed="false">Dark</button>
+    </div>
+   </div>
+   <div class="row">
+    <span class="hint">Projection</span>
+    <div class="seg" id="projSeg">
+      <button id="pEA" aria-pressed="true">Equal-area (Schmidt)</button>
+      <button id="pEQ" aria-pressed="false">Equal-angle (Wulff)</button>
+    </div>
+   </div>
+  </div>
+</header>
+
+<section class="views">
+  <div class="panel">
+    <div class="phead"><h2>3D reference sphere</h2><div class="row hright">
+      <button class="small ghost" id="vPlan">Plan view</button>
+      <button class="small ghost" id="vObl">Oblique</button>
+      <button class="small ghost" id="vSouth">From south</button>
+      <div class="dl"><button type="button" class="iconbtn" data-dl="sphere" aria-haspopup="true" title="Download as PNG"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 3h13l3 3v15H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 3v6h8V3" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="8" y="13" width="8" height="6" rx="1" fill="currentColor"/></svg></button><div class="dlmenu" hidden><span class="hint">Download PNG</span><button type="button" data-png="sphere" data-bg="white">White background</button><button type="button" data-png="sphere" data-bg="black">Black background</button><button type="button" data-png="sphere" data-bg="none">No background</button></div></div></div></div>
+    <div class="tbar sph">
+      <label class="sl" title="Opacity of the lower hemisphere"><span>Bowl</span><input type="range" id="bowlOp" min="0" max="1" step="0.05" value="1" aria-label="Opacity of the lower hemisphere"><span class="hint mono" id="bowlOpV">100%</span></label>
+      <label class="sl" title="Opacity of the plane disks inside the sphere"><span>Planes</span><input type="range" id="planeOp" min="0" max="1" step="0.05" value="0.2" aria-label="Opacity of the plane disks inside the sphere"><span class="hint mono" id="planeOpV">20%</span></label>
+      <label class="sl" title="Opacity of the lines from the centre to each pole or line"><span>Pole lines</span><input type="range" id="poleOp" min="0" max="1" step="0.05" value="0.6" aria-label="Opacity of the lines from the centre to each pole or line"><span class="hint mono" id="poleOpV">60%</span></label>
+      <label class="chk"><input type="checkbox" id="tUpper"> Upper half</label>
+      <label class="chk"><input type="checkbox" id="autoRot"> Spin</label>
+    </div>
+    <div class="canvas-box"><canvas id="sphere" aria-label="Rotatable 3D sphere, drag to rotate"></canvas></div>
+    <div class="readout" id="sphRead">Drag to rotate. The opaque bowl is the lower hemisphere, the upper half is glass.</div>
+  </div>
+  <div class="panel">
+    <div class="phead"><h2>Stereonet</h2><div class="dl"><button type="button" class="iconbtn" data-dl="net" aria-haspopup="true" title="Download as PNG"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 3h13l3 3v15H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 3v6h8V3" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="8" y="13" width="8" height="6" rx="1" fill="currentColor"/></svg></button><div class="dlmenu" hidden><span class="hint">Download PNG</span><button type="button" data-png="net" data-bg="white">White background</button><button type="button" data-png="net" data-bg="black">Black background</button><button type="button" data-png="net" data-bg="none">No background</button></div></div></div>
+    <div class="tbar">
+      <label class="chk"><input type="checkbox" id="tNet" checked> Net</label>
+      <label class="chk"><input type="checkbox" id="tGC" checked> Great circles</label>
+      <label class="chk"><input type="checkbox" id="tPoles" checked> Poles</label>
+    </div>
+    <div class="canvas-box"><canvas id="net" aria-label="Lower hemisphere stereonet, click a pole or great circle to select it"></canvas></div>
+    <div class="readout" id="netRead">Click a pole, line or great circle to select it.</div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="phead"><h2>Analysis tools</h2>
+    <div class="row hdrtoggles">
+      <label class="chk" title="Fills each plane inside the lower hemisphere of the 3D sphere"><input type="checkbox" id="tDisks" checked> Plane disks in 3D</label>
+      <label class="chk" title="For selected lines, poles and intersections: vertical drop and plunge angle in the 3D sphere"><input type="checkbox" id="tGuide" checked> Plunge guides in 3D</label>
+      <label class="chk" title="Measurement number next to each pole or line on the net"><input type="checkbox" id="tLabels"> Numbers on the net</label>
+    </div>
+    <div class="legend" id="legend" hidden><span id="lgMin">0</span><canvas id="lgBar" width="140" height="10"></canvas><span id="lgMax"></span><span>MUD</span></div>
+  </div>
+  <div class="pbody">
+    <div class="groups">
+      <div class="grp">
+        <h3>Statistics of several planes</h3>
+        <p class="gdesc">Work on the poles of a group of planes.</p>
+        <div class="trow"><label class="chk" title="Plane whose pole is the main concentration of poles (first eigenvector e1 of the orientation tensor). Needs at least 2 planes that form a cluster."><input type="checkbox" id="tMean"> Mean plane</label><div class="seg scope" data-for="sMean" role="group" aria-label="Data used"><button type="button" data-v="set" aria-pressed="true" title="One mean plane for each switched-on set">All data</button><button type="button" data-v="sel" aria-pressed="false" title="One mean plane from the selected planes only">Selection</button></div></div>
+        <div class="st" id="stMean"></div>
+        <div class="trow"><label class="chk" title="Great circle that best fits the poles and its pole, the β axis (third eigenvector e3). For cylindrical folds the β axis is the fold axis. Needs at least 3 planes whose poles spread along a girdle."><input type="checkbox" id="tGirdle"> Best-fit girdle and β axis</label><div class="seg scope" data-for="sGirdle" role="group" aria-label="Data used"><button type="button" data-v="set" aria-pressed="true" title="One girdle and β axis for each switched-on set">All data</button><button type="button" data-v="sel" aria-pressed="false" title="One girdle and β axis from the selected planes only">Selection</button></div></div>
+        <div class="st" id="stGirdle"></div>
+        <div class="trow"><label class="chk" title="Intersection line of every pair of planes (β diagram). In a cylindrical fold these lines cluster on the fold axis. Needs at least 2 planes."><input type="checkbox" id="tBeta"> β diagram (all intersections)</label><div class="seg scope" data-for="sBeta" role="group" aria-label="Data used"><button type="button" data-v="set" aria-pressed="true" title="Every pair of planes in the switched-on sets">All data</button><button type="button" data-v="sel" aria-pressed="false" title="Only pairs of selected planes">Selection</button></div></div>
+        <div class="st" id="stBeta"></div>
+      </div>
+      <div class="grp">
+        <h3>Density of orientations</h3>
+        <p class="gdesc">Contours where poles or lines concentrate (exponential Kamb, Vollmer 1995, in multiples of uniform density).</p>
+        <div class="trow"><label class="chk" title="Density map and contours. Needs at least 10 data points."><input type="checkbox" id="tDens"> Density map</label><div class="seg scope" data-for="sDens" role="group" aria-label="Data used"><button type="button" data-v="set" aria-pressed="true" title="All switched-on sets together">All data</button><button type="button" data-v="sel" aria-pressed="false" title="Only the selected measurements">Selection</button></div></div>
+        <div class="st" id="stDens"></div>
+        <div class="row">
+          <label class="fld">Data<select id="dSrc"><option value="poles">Poles to planes</option><option value="lines">Lines</option><option value="all">Poles and lines</option><option value="beta">Plane intersections (β)</option></select></label>
+          <label class="fld">Smoothing σ<select id="dSig"><option value="2">2</option><option value="3" selected>3 (Kamb)</option><option value="4">4</option></select></label>
+          <label class="fld">Interval<select id="dInt"><option value="1">1 MUD</option><option value="2" selected>2 MUD</option><option value="3">3 MUD</option><option value="5">5 MUD</option></select></label>
+          <label class="fld">Style<select id="dSty"><option value="smooth">Smooth</option><option value="band">Banded</option></select></label>
+          <label class="fld">Colours<select id="dMap"><option value="viridis">Viridis</option><option value="inferno">Inferno</option><option value="grey">Greyscale</option></select></label>
+        </div>
+        <label class="chk" title="Contour lines of the density at the chosen interval"><input type="checkbox" id="tCont" checked> Contour lines</label>
+      </div>
+      <div class="stack">
+      <div class="grp">
+        <h3>Two selected planes</h3>
+        <p class="gdesc">Select exactly two planes. The intersection, the angle and the bisector planes appear in Results on the right.</p>
+        <label class="chk" title="σ1 bisects the acute angle, σ2 is the intersection and σ3 bisects the obtuse angle. Valid only for a conjugate fault pair (Anderson), with an acute angle of 30° to 80° between the planes."><input type="checkbox" id="tStress" checked> Conjugate stress axes σ1, σ2, σ3</label>
+        <div class="st" id="stStress"></div>
+      </div>
+      <div class="grp">
+        <h3>Net grid</h3>
+        <p class="gdesc">Rotate only the background grid onto an axis, for example a fold axis. The data does not move.</p>
+        <label class="chk" title="Draw the grid rotated onto the axis"><input type="checkbox" id="tRot"> Rotated grid</label>
+        <div class="rotrow">
+          <label class="fld rotfld">Axis, trend/plunge<input type="text" id="rotAx" placeholder="e.g. 060/15" aria-label="Grid axis as trend/plunge, same order as line entry"></label>
+          <button type="button" class="small primary" id="bRot" title="Use the typed axis (also with Enter)">Apply</button>
+          <button type="button" class="small ghost" id="bRotClr" title="Forget the typed axis and use the selection or the β axis">Clear</button>
+        </div>
+        <div class="st" id="rotSt"></div>
+      </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<details class="panel guide" id="guide">
+  <summary class="phead"><h2>Instructions</h2><span class="hint">Click to show or hide the guides</span></summary>
+  <div class="pbody"><div class="howto"><div><h3>Import data</h3><p>Choose the input format, then use Choose file or drag a .csv or .txt. Headers such as Strike, Dip, DipDir, Trend, Plunge, Set and Type are read automatically, in any column order. Without headers the first two numbers are used and a third value is the set name. Lines with errors are skipped and listed under the box.</p></div><div><h3>Type data by hand</h3><p>One measurement per line, for example 045, 30 or 120/65 J1. Separators can be comma, semicolon, tab, space or slash. Strike/Dip uses the right-hand rule: the plane dips to the right of the strike direction.</p></div><div><h3>Select measurements</h3><p>Click a pole, line or great circle on the net, or tick a row in the table. Shift+click a row selects every row between it and the last row you clicked. Select all and Clear selection work on switched-on sets only. Press Delete to remove the selection.</p></div><div><h3>From all data</h3><p>Uses every measurement of the switched-on sets. Each set is calculated on its own, so three sets give three mean planes or girdles. The density map puts all switched-on sets together. Derived results are left out.</p></div><div><h3>From selection</h3><p>Uses only the selected measurements, as one group, even when it mixes sets. Planes and lines are calculated apart. Results are drawn in blue.</p></div><div><h3>Two items selected</h3><p>Two planes give the intersection line, the angle and the bisector planes, and σ1, σ2, σ3 if they can be a conjugate fault pair. Two lines give the plane that contains both. A plane and a line on it give the rake.</p></div><div><h3>Add a result to your list</h3><p>+ Add puts a calculated plane or line in the table, in set Derived, with a note of where it came from. You can colour, hide, select or delete it. Derived results are not counted in All data, so they never change the set statistics.</p></div><div><h3>Hiding is not deleting</h3><p>The eye in the table hides a measurement on the net and the 3D view only. It still counts in every calculation. Only Delete removes it from the calculations. A set chip is different: switching a set off leaves it out of All data.</p></div><div><h3>Colours and sets</h3><p>Double-click a set name in the table to rename it or move the measurement to another set (with several rows selected, all of them move). Click the colour square in a row to change that measurement. With several rows selected, the new colour goes to all of them. Click a set chip above the table to switch the whole set on or off.</p></div><div><h3>When a tool does not draw</h3><p>A result is drawn only when it exists geologically: enough measurements, planes or lines that are not parallel, and the right shape of data (a cluster for a mean, a girdle for a fold axis). The line under each tool says what is missing.</p></div><div><h3>Rotated grid</h3><p>Turns only the background grid onto an axis, for example a fold axis, so planes that contain it fall on grid lines. Type the axis as trend/plunge and press Apply, or select two planes or one line. The data does not move.</p></div><div><h3>3D view</h3><p>Drag to rotate. Plan view matches the stereonet. Upper half shows or hides the glass top, and Bowl changes how transparent the lower hemisphere is. Dashed lines are in the upper hemisphere.</p></div></div></div>
+</details>
+
+<section class="work">
+  <div class="panel">
+    <div class="phead"><h2>Data</h2>
+    </div>
+    <div class="pbody">
+      <div class="row">
+        <label class="fld">Input format<select id="fmt">
+          <option value="rhr">Strike / Dip (RHR)</option>
+          <option value="dipdd">Dip / Dip azimuth</option>
+          <option value="dddip">Dip azimuth / Dip</option>
+          <option value="line">Trend / Plunge (lines)</option>
+        </select></label>
+        <label class="fld">Set name<input type="text" id="setName" placeholder="e.g. S0, J1, Fault" size="12"></label>
+      </div>
+      <div class="drop" id="drop" title="How to prepare the file:&#10;One measurement per row, one value per column.&#10;First row can hold the column names.&#10;&#10;Planes, right-hand rule:&#10;Strike, Dip, Set&#10;045, 30, S0&#10;120, 65, J1&#10;&#10;Planes, dip direction:&#10;DipDir, Dip, Set&#10;135, 30, S0&#10;&#10;Lines:&#10;Trend, Plunge, Set&#10;060, 15, L1&#10;&#10;Set is optional and groups the measurements (S0, J1, Fault...).&#10;Type is optional: write plane or line when one file mixes both.&#10;Separators: comma, semicolon, tab or space.&#10;Without column names, choose the input format above. The first two numbers are read and a third value is the set name.">
+        <div class="dhint"><span class="hint">Import a .csv or .txt file. Put each value in its own column: one for strike (or dip direction), one for dip and one for the set name. For lines use trend, plunge and set.</span>
+          <pre class="ex">Strike,Dip,Set
+045,30,S0
+120,65,J1</pre>
+          <span class="hint">Hover here for all the options.</span></div>
+        <label><input type="file" id="file" accept=".csv,.txt,.tsv,.dat" multiple hidden><button id="bFile" type="button" class="primary">Choose file</button></label>
+      </div>
+      <div>
+        <h3 style="margin-bottom:4px">Manual entry</h3>
+        <textarea id="manual" spellcheck="false" placeholder="One measurement per line, e.g.&#10;045, 30&#10;120/65 J1&#10;310 72 Fault"></textarea>
+        <div class="row" style="margin-top:6px"><button id="bAdd" class="primary">Add measurements</button><span class="hint">Third value is optional set name. Separators: comma, semicolon, tab, space or slash.</span></div>
+      </div>
+      <div class="msg" id="msg"></div>
+      <div><h3 style="margin-bottom:6px">Sets</h3><div class="sets" id="sets"></div></div>
+      <div class="row" style="justify-content:space-between"><h3>Measurements <span id="count"></span></h3>
+        <div class="row"><span class="hint">Shift+click a row to select a range</span><button class="small ghost" id="bSelAll">Select all</button><button class="small ghost" id="bRmEx">Remove example data</button><button class="small ghost" id="bSelNone">Clear selection</button><button class="small primary" id="bClear">Clear all</button><button class="small ghost" id="bDelSel">Delete selected</button></div></div>
+      <div class="tablebox"><table><thead><tr><th>Sel</th><th><button type="button" class="eye" id="eyeAll" title="Show all hidden measurements" aria-label="Show all"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg></button></th><th>#</th><th>Set</th><th>Type</th><th>Strike/Dip RHR</th><th>Dip/Dip az</th><th>Pole / Line</th><th></th></tr></thead><tbody id="tbody"></tbody></table></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="phead"><h2>Results</h2><button class="small ghost" id="bCopy">Copy as text</button></div>
+    <div class="pbody res" id="results"></div>
+  </div>
+</section>
+<footer class="credit" id="credit">© 2026 Daniel Castaño Madrigal. Stereonet Workbench V1, designed by Daniel Castaño Madrigal, developed with Claude.</footer>
+</div>
+<div class="modal" id="pngModal" hidden><div class="box" role="dialog" aria-label="PNG image"><div class="row" style="justify-content:space-between"><h2 id="pngTitle">PNG</h2><button type="button" class="small ghost" id="pngClose">Close</button></div><img id="pngImg" alt="Exported figure"><div class="row"><a id="pngLink" class="btnlink" download="stereonet.png">Download PNG</a><span class="hint">If the download does not start, right-click the image and choose Save image as.</span></div></div></div>
+
+<script>
+"use strict";
+const D=Math.PI/180, $=s=>document.getElementById(s);
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const norm=a=>{const l=Math.hypot(a[0],a[1],a[2])||1;return [a[0]/l,a[1]/l,a[2]/l]};
+const add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]], sc=(a,k)=>[a[0]*k,a[1]*k,a[2]*k], neg=a=>[-a[0],-a[1],-a[2]];
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const m360=x=>((x%360)+360)%360;
+function lv(t,p){t*=D;p*=D;return [Math.sin(t)*Math.cos(p),Math.cos(t)*Math.cos(p),-Math.sin(p)]}
+const lower=v=>v[2]>0?neg(v):v;
+function tp(v){v=lower(v);const p=Math.asin(clamp(-v[2],-1,1))/D;let t=Math.atan2(v[0],v[1])/D;if(t<0)t+=360;if(p>89.99)t=0;return [t,p]}
+const poleOf=(dd,dip)=>lv(dd+180,90-dip);
+function planeOf(n){const [t,p]=tp(n);return [m360(t+180),90-p]}
+const f3=x=>String(Math.round(m360(x))%360).padStart(3,'0'), f2=x=>String(Math.round(x)).padStart(2,'0');
+const fRHR=(dd,dip)=>`${f3(dd-90)}/${f2(dip)}`, fDD=(dd,dip)=>`${f2(dip)}/${f3(dd)}`, fLn=(t,p)=>`${f2(p)}→${f3(t)}`;
+const fLv=v=>{const [t,p]=tp(v);return fLn(t,p)};
+const fPv=n=>{const [dd,dip]=planeOf(n);return `${fRHR(dd,dip)} (dip ${fDD(dd,dip)})`};
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+/* ---------- projection ---------- */
+function projN(v,ea){v=lower(v);const h=Math.hypot(v[0],v[1]);const th=Math.acos(clamp(-v[2],-1,1));const r=ea?Math.SQRT2*Math.sin(th/2):Math.tan(th/2);if(h<1e-12)return [0,0];return [r*v[0]/h,r*v[1]/h]}
+function unprojN(x,y,ea){let r=Math.hypot(x,y);if(r>1){x/=r;y/=r;r=1}const th=ea?2*Math.asin(Math.min(1,r/Math.SQRT2)):2*Math.atan(r);const h=r>1e-12?Math.sin(th)/r:0;return [x*h,y*h,-Math.cos(th)]}
+
+/* ---------- state ---------- */
+const S={feats:[],next:1,sel:new Set(),sets:{},ea:true,yaw:0,pitch:35,hover:null,dens:null,heat:null,cont:null,setOrder:[]};
+const opt=id=>$(id).checked;
+const SCOPE={sMean:'set',sGirdle:'set',sBeta:'set',sDens:'set'},scope=k=>SCOPE[k];
+let T={};
+function readTheme(){const cs=getComputedStyle(document.documentElement);const g=k=>cs.getPropertyValue(k).trim();
+  T={panel:g('--panel'),plot:g('--plot'),ink:g('--ink'),muted:g('--muted'),line:g('--line'),grid:g('--grid'),accent:g('--accent'),brass:g('--brass'),hlPlane:g('--hlPlane'),hlPole:g('--hlPole'),danger:g('--danger'),bowl:g('--bowl'),
+     sets:['--s1','--s2','--s3','--s4','--s5','--s6','--s7','--s8'].map(g),mono:g('--f-mono')||'monospace',disp:g('--f-display')||'sans-serif'};
+  T.bowlRGB=hexRGB(T.bowl);T.plotRGB=hexRGB(T.plot);}
+function hexRGB(h){h=h.replace('#','');if(h.length===3)h=h.split('').map(c=>c+c).join('');const n=parseInt(h,16);return isNaN(n)?[200,200,200]:[(n>>16)&255,(n>>8)&255,n&255]}
+function setColor(name){const i=S.setOrder.indexOf(name);return T.sets[(i<0?0:i)%T.sets.length]}
+function featColor(f){return f.color||setColor(f.set)}
+function toHex(c){c=(c||'').trim();if(/^#[0-9a-f]{6}$/i.test(c))return c;if(/^#[0-9a-f]{3}$/i.test(c))return '#'+c.slice(1).split('').map(q=>q+q).join('');return '#2a5d9e'}
+function ensureSet(name){if(!S.sets[name]){S.sets[name]={visible:true};S.setOrder.push(name)}}
+
+function addFeat(f){f.id=S.next++;if(f.kind==='plane'){f.n=poleOf(f.dd,f.dip)}else{f.v=lv(f.tr,f.pl)}ensureSet(f.set);S.feats.push(f)}
+const visible=()=>S.feats.filter(f=>S.sets[f.set]&&S.sets[f.set].visible);
+
+/* ---------- parsing ---------- */
+const KEYS=[
+ ['strike',/^(strike|str|rumbo|azimuth_strike)$/],
+ ['dd',/^(dipdir|dip_dir|dipdirection|dip_direction|dipaz|dip_az|dipazimuth|dip_azimuth|dipazimut|azimuth|azimut|az|dd|ddir)$/],
+ ['dip',/^(dip|buz|buzamiento|inclination)$/],
+ ['tr',/^(trend|tr|bearing)$/],['pl',/^(plunge|pl|inmersion)$/],
+ ['set',/^(set|group|family|familia|label|domain|structure|name|unit)$/],['type',/^(type|kind|feature|tipo)$/]];
+function splitTok(line){return line.trim().replace(/(\d)\s*\/\s*(?=[\d.])/g,'$1 ').replace(/°/g,'').split(/[,;\t]+|\s+/).filter(s=>s!=='')}
+const isNum=s=>/^[-+]?\d*\.?\d+$/.test(s);
+function parseText(text,fmt,defSet){
+  const lines=text.split(/\r?\n/);let map=null,added=0;const skipped=[];
+  for(let li=0;li<lines.length;li++){
+    const raw=lines[li];if(!raw.trim()||/^\s*(#|\/\/)/.test(raw))continue;
+    const tk=splitTok(raw);
+    if(map===null&&added===0&&tk.length>=2&&(!isNum(tk[0])||!isNum(tk[1]))){
+      const m={};tk.forEach((h,i)=>{const k=h.toLowerCase().replace(/[\s\-\.()°]/g,'');for(const [key,re] of KEYS){if(re.test(k)&&m[key]===undefined){m[key]=i;break}}});
+      if(Object.keys(m).length>=2){map=m;continue}
+    }
+    let f=null,why='';
+    try{
+      if(map){
+        const g=k=>map[k]!==undefined?tk[map[k]]:undefined;
+        const set=(g('set')||defSet||'Set 1').trim();
+        const ty=(g('type')||'').toLowerCase();
+        const planeW=/\b(plane|planes|bed|bedding|joint|joints|fault|faults|foliation|cleavage|schistosity|vein|veins|dike|dyke|contact|limb|shear|s[0-3])\b/,lineW=/\b(line|lines|lineation|lin|lnr|hinge|axis|axes|striation|slickenline|stretching|intersection)\b/;
+        const isLine=!planeW.test(ty)&&(lineW.test(ty)||(map.tr!==undefined&&map.dip===undefined));
+        if(isLine){const a=parseFloat(g('tr')??g('dd')??g('strike')),b=parseFloat(g('pl')??g('dip'));f={kind:'line',tr:a,pl:b,set}}
+        else if(map.dd!==undefined&&map.dip!==undefined){f={kind:'plane',dd:parseFloat(g('dd')),dip:parseFloat(g('dip')),set}}
+        else if(map.strike!==undefined&&map.dip!==undefined){f={kind:'plane',dd:parseFloat(g('strike'))+90,dip:parseFloat(g('dip')),set}}
+        else why='columns not recognised';
+      }else{
+        const nums=[],rest=[];tk.forEach(t=>{if(isNum(t)&&nums.length<2)nums.push(parseFloat(t));else rest.push(t)});
+        if(nums.length<2)why='needs two numbers';
+        else{const set=(rest.join(' ')||defSet||'Set 1').trim();const [a,b]=nums;
+          if(fmt==='rhr')f={kind:'plane',dd:a+90,dip:b,set};
+          else if(fmt==='dipdd')f={kind:'plane',dd:b,dip:a,set};
+          else if(fmt==='dddip')f={kind:'plane',dd:a,dip:b,set};
+          else f={kind:'line',tr:a,pl:b,set};}
+      }
+      if(f){
+        if(f.kind==='plane'){if(!isFinite(f.dd)||!isFinite(f.dip))why='not a number';else if(f.dip<0||f.dip>90)why='dip outside 0 to 90';else f.dd=m360(f.dd)}
+        else{if(!isFinite(f.tr)||!isFinite(f.pl))why='not a number';else if(f.pl<0||f.pl>90)why='plunge outside 0 to 90';else f.tr=m360(f.tr)}
+      }
+    }catch(e){why='could not read'}
+    if(f&&!why){addFeat(f);added++}else skipped.push(`line ${li+1}: ${why||'could not read'} (${raw.trim().slice(0,40)})`);
+  }
+  return {added,skipped};
+}
+function report(r,src){const el=$('msg');let t=`${src}: ${r.added} measurement${r.added===1?'':'s'} added.`;
+  if(r.skipped.length){t+=`\n${r.skipped.length} line${r.skipped.length===1?'':'s'} skipped:\n`+r.skipped.slice(0,6).join('\n')+(r.skipped.length>6?`\n… and ${r.skipped.length-6} more`:'')}
+  el.textContent=t;el.className='msg'+(r.added===0&&r.skipped.length?' err':'');}
+
+/* ---------- statistics ---------- */
+function eig3(A){let a=A.map(r=>r.slice()),v=[[1,0,0],[0,1,0],[0,0,1]];
+  for(let it=0;it<50;it++){let p=0,q=1,m=Math.abs(a[0][1]);if(Math.abs(a[0][2])>m){p=0;q=2;m=Math.abs(a[0][2])}if(Math.abs(a[1][2])>m){p=1;q=2;m=Math.abs(a[1][2])}
+    if(m<1e-12)break;const th=0.5*Math.atan2(2*a[p][q],a[q][q]-a[p][p]);const c=Math.cos(th),s=Math.sin(th);
+    for(let k=0;k<3;k++){const akp=a[k][p],akq=a[k][q];a[k][p]=c*akp-s*akq;a[k][q]=s*akp+c*akq}
+    for(let k=0;k<3;k++){const apk=a[p][k],aqk=a[q][k];a[p][k]=c*apk-s*aqk;a[q][k]=s*apk+c*aqk}
+    for(let k=0;k<3;k++){const vkp=v[k][p],vkq=v[k][q];v[k][p]=c*vkp-s*vkq;v[k][q]=s*vkp+c*vkq}}
+  const out=[0,1,2].map(i=>({val:a[i][i],vec:norm([v[0][i],v[1][i],v[2][i]])}));out.sort((x,y)=>y.val-x.val);return out}
+function orientStats(vs){const n=vs.length;if(n<2)return null;const A=[[0,0,0],[0,0,0],[0,0,0]];
+  vs.forEach(v=>{for(let i=0;i<3;i++)for(let j=0;j<3;j++)A[i][j]+=v[i]*v[j]/n});
+  const e=eig3(A);const l=e.map(x=>Math.max(x.val,1e-9));
+  const e1=e[0].vec;let R=[0,0,0];vs.forEach(v=>{R=add(R,dot(v,e1)<0?neg(v):v)});const Rl=Math.hypot(...R);
+  const kappa=n>Rl?(n-1)/(n-Rl):Infinity;
+  let a95=null;if(n>2&&Rl>0){const c=1-((n-Rl)/Rl)*(Math.pow(20,1/(n-1))-1);a95=c>-1&&c<=1?Math.acos(c)/D:null}
+  return {n,e,l,K:Math.log(l[0]/l[1])/Math.log(l[1]/l[2]),C:Math.log(l[0]/l[2]),mean:norm(R),kappa,a95,Rbar:Rl/n}}
+function inter(n1,n2){const c=cross(n1,n2);const l=Math.hypot(...c);return l<1e-9?null:lower(sc(c,1/l))}
+
+/* ---------- density ---------- */
+function densVecs(){const vf=visible().filter(f=>scope('sDens')==='sel'?S.sel.has(f.id):!f.derived),src=$('dSrc').value,out=[];
+  if(src==='beta'){const P=vf.filter(f=>f.kind==='plane');for(let i=0;i<P.length;i++)for(let j=i+1;j<P.length;j++){const x=inter(P[i].n,P[j].n);if(x)out.push(x)}return out}
+  vf.forEach(f=>{if(f.kind==='plane'&&(src==='poles'||src==='all'))out.push(f.n);if(f.kind==='line'&&(src==='lines'||src==='all'))out.push(f.v)});return out}
+function computeDensity(){S.dens=null;S.heat=null;S.cont=null;if(!opt('tDens'))return;
+  const vs=densVecs(),n=vs.length;if(n<LIM.dens)return;const sg=+$('dSig').value,k=2*(1+n/(sg*sg)),N=110;
+  const X=new Float64Array(n),Y=new Float64Array(n),Z=new Float64Array(n);vs.forEach((v,i)=>{X[i]=v[0];Y[i]=v[1];Z[i]=v[2]});
+  const g=new Float32Array((N+1)*(N+1));let max=0;
+  for(let j=0;j<=N;j++)for(let i=0;i<=N;i++){const u=unprojN(-1+2*i/N,1-2*j/N,true);let s=0;
+    for(let q=0;q<n;q++){const c=Math.abs(u[0]*X[q]+u[1]*Y[q]+u[2]*Z[q]);s+=Math.exp(k*(c-1))}
+    const val=s*k/n;g[j*(N+1)+i]=val;if(val>max)max=val}
+  S.dens={g,N,max,n,k}}
+function sampleD(x,y){const d=S.dens,N=d.N;let fi=(x+1)/2*N,fj=(1-y)/2*N;fi=clamp(fi,0,N-1e-6);fj=clamp(fj,0,N-1e-6);
+  const i=Math.floor(fi),j=Math.floor(fj),a=fi-i,b=fj-j,w=N+1,g=d.g;
+  return g[j*w+i]*(1-a)*(1-b)+g[j*w+i+1]*a*(1-b)+g[(j+1)*w+i]*(1-a)*b+g[(j+1)*w+i+1]*a*b}
+const MAPS={viridis:[[68,1,84],[72,40,120],[62,74,137],[49,104,142],[38,130,142],[31,158,137],[53,183,121],[109,205,89],[180,222,44],[253,231,37]],
+ inferno:[[0,0,4],[40,11,84],[101,21,110],[159,42,99],[212,72,66],[245,125,21],[250,193,39],[252,255,164]],grey:[[245,245,245],[20,20,20]]};
+function cmap(t){const m=MAPS[$('dMap').value]||MAPS.viridis;t=clamp(t,0,1)*(m.length-1);const i=Math.min(Math.floor(t),m.length-2),f=t-i;return [0,1,2].map(c=>m[i][c]+(m[i+1][c]-m[i][c])*f)}
+function densColor(v){const d=S.dens,iv=+$('dInt').value;let x=v;if($('dSty').value==='band')x=Math.floor(v/iv)*iv;return cmap(x/Math.max(d.max,iv))}
+function buildHeat(){if(!S.dens){S.heat=null;return}const M=240,c=document.createElement('canvas');c.width=c.height=M;const cx=c.getContext('2d'),im=cx.createImageData(M,M),p=im.data;
+  for(let j=0;j<M;j++)for(let i=0;i<M;i++){const x=(i+.5)/M*2-1,y=1-(j+.5)/M*2;if(x*x+y*y>1.0)continue;const u=unprojN(x,y,S.ea);const e=projN(u,true);const col=densColor(sampleD(e[0],e[1]));
+    const o=(j*M+i)*4;p[o]=col[0];p[o+1]=col[1];p[o+2]=col[2];p[o+3]=235}
+  cx.putImageData(im,0,0);S.heat=c}
+function buildContours(){S.cont=null;if(!S.dens||!opt('tCont'))return;const d=S.dens,N=d.N,iv=+$('dInt').value,w=N+1,g=d.g,segs=[];
+  const it=(a,b,l)=>Math.abs(b-a)<1e-9?0.5:(l-a)/(b-a);
+  for(let L=iv;L<d.max;L+=iv){for(let j=0;j<N;j++)for(let i=0;i<N;i++){
+    const x0=-1+2*i/N,x1=x0+2/N,y0=1-2*j/N,y1=y0-2/N;if(Math.hypot((x0+x1)/2,(y0+y1)/2)>1)continue;
+    const a=g[j*w+i],b=g[j*w+i+1],c=g[(j+1)*w+i+1],dd=g[(j+1)*w+i];
+    const code=(a>=L?8:0)|(b>=L?4:0)|(c>=L?2:0)|(dd>=L?1:0);if(code===0||code===15)continue;
+    const top=[x0+it(a,b,L)*(x1-x0),y0],right=[x1,y0+it(b,c,L)*(y1-y0)],bot=[x0+it(dd,c,L)*(x1-x0),y1],left=[x0,y0+it(a,dd,L)*(y1-y0)];
+    const P=[];switch(code){case 1:case 14:P.push([left,bot]);break;case 2:case 13:P.push([bot,right]);break;case 3:case 12:P.push([left,right]);break;
+      case 4:case 11:P.push([top,right]);break;case 5:P.push([left,top],[bot,right]);break;case 6:case 9:P.push([top,bot]);break;case 7:case 8:P.push([left,top]);break;case 10:P.push([top,right],[left,bot]);break}
+    P.forEach(s=>segs.push(s.map(q=>projN(unprojN(q[0],q[1],true),S.ea))))}}
+  S.cont=segs}
+function drawLegend(){const lg=$('legend');if(!S.dens){lg.hidden=true;return}lg.hidden=false;const c=$('lgBar'),x=c.getContext('2d');
+  for(let i=0;i<140;i++){const col=cmap(i/139);x.fillStyle=`rgb(${col.map(Math.round).join(',')})`;x.fillRect(i,0,1,10)}$('lgMax').textContent=S.dens.max.toFixed(1)}
+
+/* ---------- canvases ---------- */
+const netC=$('net'),sphC=$('sphere');let netG={},sphG={};
+function fit(c){const r=c.getBoundingClientRect(),d=(window.devicePixelRatio||1)*(S.expScale||1);const W=Math.max(1,Math.round(r.width*d)),H=Math.max(1,Math.round(r.height*d));
+  if(c.width!==W||c.height!==H){c.width=W;c.height=H}const x=c.getContext('2d');x.setTransform(d,0,0,d,0,0);return {x,w:r.width,h:r.height}}
+
+/* stereonet */
+function P2(v){const q=projN(v,S.ea);return [netG.cx+q[0]*netG.R,netG.cy-q[1]*netG.R]}
+function gcPts(n,step=2){const [dd,dip]=planeOf(n);const u=lv(dd-90,0),w=lv(dd,dip),pts=[];for(let a=0;a<=180;a+=step){const r=a*D;pts.push(add(sc(u,Math.cos(r)),sc(w,Math.sin(r))))}return pts}
+function strokeLower(x,pts){x.beginPath();let pen=false;pts.forEach(v=>{if(v[2]>1e-6){pen=false;return}const q=projN(v,S.ea),p=[netG.cx+q[0]*netG.R,netG.cy-q[1]*netG.R];pen?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1]);pen=true});x.stroke()}
+function rotAxis(){if(S.rotTyped)return {v:S.rotTyped,src:'the typed axis'};const an=selAnalysis();
+  if(an&&an.inter)return {v:an.inter,src:`the intersection of #${an.a.id} and #${an.b.id}`};
+  if(an&&an.type==='l1')return {v:an.l.v,src:`selected line #${an.l.id}`};
+  const st=setStats().find(q=>girdleOK(q.planes));return st?{v:st.planes.e[2].vec,src:'the β axis of '+st.name}:null}
+function strokePts(x,pts){x.beginPath();pts.forEach((v,i)=>{const p=P2(v);i?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1])});x.stroke()}
+function marker(x,p,shape,size,fill,stroke){x.beginPath();
+  if(shape==='circle')x.arc(p[0],p[1],size,0,7);
+  else if(shape==='square')x.rect(p[0]-size,p[1]-size,2*size,2*size);
+  else if(shape==='diamond'){x.moveTo(p[0],p[1]-size*1.4);x.lineTo(p[0]+size*1.4,p[1]);x.lineTo(p[0],p[1]+size*1.4);x.lineTo(p[0]-size*1.4,p[1]);x.closePath()}
+  else if(shape==='tri'){x.moveTo(p[0],p[1]-size*1.3);x.lineTo(p[0]+size*1.2,p[1]+size*.8);x.lineTo(p[0]-size*1.2,p[1]+size*.8);x.closePath()}
+  else if(shape==='star'){for(let i=0;i<10;i++){const r=i%2?size*.45:size*1.5,a=-Math.PI/2+i*Math.PI/5;const q=[p[0]+r*Math.cos(a),p[1]+r*Math.sin(a)];i?x.lineTo(...q):x.moveTo(...q)}x.closePath()}
+  if(fill){x.fillStyle=fill;x.fill()}if(stroke){x.strokeStyle=stroke;x.lineWidth=1.2;x.stroke()}}
+function label(x,p,txt,col){x.font=`500 11px ${T.mono}`;x.fillStyle=col;x.textBaseline='middle';x.fillText(txt,p[0]+7,p[1]-7)}
+
+function drawNet(){const {x,w,h}=fit(netC);const R=(Math.min(w,h)/2-26)*0.95,cx=w/2,cy=h/2;netG={R,cx,cy};x.clearRect(0,0,w,h);
+  x.save();x.beginPath();x.arc(cx,cy,R,0,7);x.fillStyle=T.plot;x.fill();x.clip();
+  if(S.heat&&opt('tDens')){x.imageSmoothingEnabled=true;x.drawImage(S.heat,cx-R,cy-R,2*R,2*R)}
+  const RA=opt('tRot')?rotAxis():null;
+  if(opt('tNet')&&RA){x.lineWidth=.7;x.strokeStyle=S.heat?'rgba(255,255,255,0.32)':T.grid;const A=RA.v;let b1=cross(A,[0,0,1]);if(Math.hypot(...b1)<1e-6)b1=[1,0,0];b1=norm(b1);const b2=cross(A,b1);
+    for(let ps=0;ps<180;ps+=10){const n=add(sc(b1,Math.cos(ps*D)),sc(b2,Math.sin(ps*D)));const u=norm(cross(n,A)),pts=[];for(let a=0;a<=360;a+=3){const r=a*D;pts.push(add(sc(A,Math.cos(r)),sc(u,Math.sin(r))))}strokeLower(x,pts)}
+    for(let be=10;be<180;be+=10){if(be===90){x.lineWidth=1.1}const pts=[];for(let a=0;a<=360;a+=3){const r=a*D;pts.push(add(sc(A,Math.cos(be*D)),sc(add(sc(b1,Math.cos(r)),sc(b2,Math.sin(r))),Math.sin(be*D))))}strokeLower(x,pts);x.lineWidth=.7}}
+  else if(opt('tNet')){x.lineWidth=.6;x.strokeStyle=S.heat?'rgba(255,255,255,0.28)':T.grid;
+    for(let d=10;d<90;d+=10){strokePts(x,gcPts(poleOf(90,d),3));strokePts(x,gcPts(poleOf(270,d),3))}
+    const a=[0,1,0],e1=[1,0,0],e2=[0,0,-1];
+    for(let b=10;b<180;b+=10){if(b===90)continue;const pts=[];for(let f=0;f<=180;f+=3){const r=f*D;pts.push(add(sc(a,Math.cos(b*D)),sc(add(sc(e1,Math.cos(r)),sc(e2,Math.sin(r))),Math.sin(b*D))))}strokePts(x,pts)}
+    x.beginPath();x.moveTo(cx,cy-R);x.lineTo(cx,cy+R);x.moveTo(cx-R,cy);x.lineTo(cx+R,cy);x.stroke()}
+  if(S.cont){x.strokeStyle=opt('tDens')?'rgba(0,0,0,0.55)':T.ink;x.lineWidth=.9;x.beginPath();S.cont.forEach(s=>{x.moveTo(cx+s[0][0]*R,cy-s[0][1]*R);x.lineTo(cx+s[1][0]*R,cy-s[1][1]*R)});x.stroke()}
+  x.restore();
+  x.beginPath();x.arc(cx,cy,R,0,7);x.strokeStyle=T.ink;x.lineWidth=1.4;x.stroke();
+  x.strokeStyle=T.ink;x.lineWidth=1;for(let t=0;t<360;t+=10){const r=t*D,L=t%90===0?9:5;x.beginPath();x.moveTo(cx+Math.sin(r)*R,cy-Math.cos(r)*R);x.lineTo(cx+Math.sin(r)*(R+L),cy-Math.cos(r)*(R+L));x.stroke()}
+  x.fillStyle=T.ink;x.font=`600 15px ${T.disp}`;x.textAlign='center';x.textBaseline='bottom';x.fillText('N',cx,cy-R-10);x.textAlign='left';
+  x.beginPath();x.moveTo(cx-5,cy);x.lineTo(cx+5,cy);x.moveTo(cx,cy-5);x.lineTo(cx,cy+5);x.stroke();
+  const vf=visible(),vd=vf.filter(f=>!f.hidden),labels=opt('tLabels');
+  // overlays under data
+  if(opt('tBeta')){const P=vf.filter(f=>f.kind==='plane'&&(scope('sBeta')==='sel'?S.sel.has(f.id):!f.derived));let cnt=0;x.strokeStyle=T.muted;x.lineWidth=1;
+    for(let i=0;i<P.length&&cnt<4000;i++)for(let j=i+1;j<P.length&&cnt<4000;j++){const v=inter(P[i].n,P[j].n);if(!v)continue;cnt++;const p=P2(v);x.beginPath();x.moveTo(p[0]-2.5,p[1]-2.5);x.lineTo(p[0]+2.5,p[1]+2.5);x.moveTo(p[0]+2.5,p[1]-2.5);x.lineTo(p[0]-2.5,p[1]+2.5);x.stroke()}}
+  if(opt('tGC')){vd.filter(f=>f.kind==='plane').forEach(f=>{const s=S.sel.has(f.id);x.strokeStyle=s?T.brass:featColor(f);x.lineWidth=s?2.6:1.2;x.globalAlpha=s?1:.85;strokePts(x,gcPts(f.n))});x.globalAlpha=1}
+  statList('sMean').forEach(st=>{const col=stCol(st);
+    if(opt('tMean')&&meanOK(st.planes)){x.strokeStyle=col;x.lineWidth=3;x.setLineDash([]);strokePts(x,gcPts(st.planes.e[0].vec));marker(x,P2(st.planes.e[0].vec),'circle',5,T.plot,col);if(labels)label(x,P2(st.planes.e[0].vec),'mean',col)}});
+  statList('sGirdle').forEach(st=>{const col=stCol(st);
+    if(opt('tGirdle')&&girdleOK(st.planes)){const b=st.planes.e[2].vec;x.strokeStyle=col;x.lineWidth=1.6;x.setLineDash([7,5]);strokePts(x,gcPts(b));x.setLineDash([]);marker(x,P2(b),'star',6,col,T.plot);label(x,P2(b),'β',col)}});
+  if(opt('tPoles'))vd.forEach(f=>{const s=S.sel.has(f.id),col=featColor(f);const p=P2(f.kind==='plane'?f.n:f.v);
+    if(f.kind==='plane')marker(x,p,'circle',s?5:3.4,col,s?T.brass:T.plot);else marker(x,p,'tri',s?5:3.8,col,s?T.brass:T.plot);
+    if(s){x.beginPath();x.arc(p[0],p[1],8,0,7);x.strokeStyle=T.brass;x.lineWidth=1.6;x.stroke()}
+    if(labels)label(x,p,String(f.id),T.muted)});
+  if(RA){const p=P2(RA.v);marker(x,p,'star',5,T.accent,T.plot);label(x,p,'grid axis '+fLv(RA.v),T.accent)}
+  const an=selAnalysis();
+  if(an&&an.inter){const p=P2(an.inter);marker(x,p,'diamond',5,T.brass,T.ink);label(x,p,'∩ '+fLv(an.inter),T.ink)}
+  if(an&&an.stress&&opt('tStress')){[['σ1',an.stress[0]],['σ2',an.stress[1]],['σ3',an.stress[2]]].forEach(([n,v])=>{const p=P2(v);marker(x,p,'square',3.5,T.danger,T.plot);label(x,p,n,T.danger)})}
+  if(an&&an.plane2l){x.strokeStyle=T.brass;x.lineWidth=2.4;x.setLineDash([3,3]);strokePts(x,gcPts(an.plane2l));x.setLineDash([])}
+  if(S.hover){const p=P2(S.hover);x.strokeStyle=T.accent;x.lineWidth=1;x.beginPath();x.arc(p[0],p[1],6,0,7);x.stroke()}
+}
+
+/* 3D sphere */
+function rotM(){const y=S.yaw*D,p=S.pitch*D,cz=Math.cos(y),sz=Math.sin(y),cp=Math.cos(p),sp=Math.sin(p);return [[cz,-sz,0],[cp*sz,cp*cz,-sp],[sp*sz,sp*cz,cp]]}
+const toV=(M,w)=>[dot(M[0],w),dot(M[1],w),dot(M[2],w)];
+const fromV=(M,v)=>[M[0][0]*v[0]+M[1][0]*v[1]+M[2][0]*v[2],M[0][1]*v[0]+M[1][1]*v[1]+M[2][1]*v[2],M[0][2]*v[0]+M[1][2]*v[1]+M[2][2]*v[2]];
+function occl(M,pv){const q=1-pv[0]*pv[0]-pv[2]*pv[2];if(q<=0)return false;const yf=-Math.sqrt(q);if(pv[1]<=yf+2e-3)return false;return fromV(M,[pv[0],yf,pv[2]])[2]<0}
+let sphImg=null,sphSize=200;
+const bowlOp=()=>+$('bowlOp').value;
+function buildSphere(M){const N=sphSize;if(!sphImg){sphImg=document.createElement('canvas');sphImg.width=sphImg.height=N}const cx=sphImg.getContext('2d'),im=cx.createImageData(N,N),p=im.data;
+  const L=norm([-0.45,-0.75,0.5]),useD=S.dens&&opt('tDens'),bw=T.bowlRGB,BO=bowlOp();
+  for(let j=0;j<N;j++)for(let i=0;i<N;i++){const a=(i+.5)/N*2-1,b=1-(j+.5)/N*2,q=1-a*a-b*b;if(q<0)continue;const yf=-Math.sqrt(q);const o=(j*N+i)*4;
+    const wf=fromV(M,[a,yf,b]);let col,alpha,sh;
+    if(wf[2]<0){col=useD?densColor(sampleD(...projN(wf,true))):bw;sh=0.55+0.45*Math.max(0,a*L[0]+yf*L[1]+b*L[2]);alpha=255*BO}
+    else{const wb=fromV(M,[a,-yf,b]);if(wb[2]<0){col=useD?densColor(sampleD(...projN(wb,true))):bw;sh=0.62+0.38*Math.max(0,-a*L[0]+yf*L[1]-b*L[2]);alpha=255*BO;
+        col=col.map((c,k)=>c*0.88+T.plotRGB[k]*0.12)}else{col=T.plotRGB;sh=1;alpha=opt('tUpper')?40:0}}
+    p[o]=col[0]*sh;p[o+1]=col[1]*sh;p[o+2]=col[2]*sh;p[o+3]=alpha}
+  cx.putImageData(im,0,0)}
+function draw3DLine(x,M,pts,col,wd,opts={}){const G=sphG;let prev=null,prevSt=null;
+  const sp=v=>[G.cx+v[0]*G.S,G.cy-v[2]*G.S];
+  const views=pts.map(w=>({w,v:toV(M,w)}));
+  for(let i=1;i<views.length;i++){const A=views[i-1],B=views[i];const mid=sc(add(A.v,B.v),.5),mw=sc(add(A.w,B.w),.5);
+    const up=mw[2]>1e-4&&!opts.solidUp;if(mw[2]>1e-4&&!opt('tUpper'))continue;const hid=occl(M,mid);
+    x.globalAlpha=(hid?1-0.82*bowlOp():1)*(up?0.45:1)*(opts.alpha||1);x.setLineDash(up?[4,4]:(hid?[2,3]:[]));
+    x.strokeStyle=col;x.lineWidth=wd;x.beginPath();const a=sp(A.v),b=sp(B.v);x.moveTo(a[0],a[1]);x.lineTo(b[0],b[1]);x.stroke()}
+  x.globalAlpha=1;x.setLineDash([])}
+function dot3D(x,M,w,r,fill,stroke){const v=toV(M,w),G=sphG;const p=[G.cx+v[0]*G.S,G.cy-v[2]*G.S];x.globalAlpha=occl(M,v)?1-0.7*bowlOp():1;
+  if(fill){const gr=x.createRadialGradient(p[0]-r*.4,p[1]-r*.45,r*.15,p[0],p[1],r*1.05);gr.addColorStop(0,'rgba(255,255,255,0.85)');gr.addColorStop(0.35,fill);gr.addColorStop(1,fill);
+    x.beginPath();x.arc(p[0],p[1],r,0,7);x.fillStyle=fill;x.fill();x.fillStyle=gr;x.fill();x.globalAlpha*=1;x.strokeStyle='rgba(0,0,0,0.45)';x.lineWidth=.8;x.stroke();if(stroke&&stroke!==T.plot){x.strokeStyle=stroke;x.lineWidth=1.4;x.stroke()}}
+  else marker(x,p,'circle',r,null,stroke);x.globalAlpha=1;return p}
+function guide3D(x,M,v,col){const [t,p]=tp(v);const h=lv(t,0),top=[v[0],v[1],0];
+  draw3DLine(x,M,[v,top],col,1,{alpha:.8});draw3DLine(x,M,[[0,0,0],sc(h,1)],col,1,{alpha:.55});
+  const arc=[];for(let a=0;a<=p;a+=3)arc.push(sc(lv(t,a),0.35));arc.push(sc(lv(t,p),0.35));draw3DLine(x,M,arc,col,1.4);
+  const q=toV(M,sc(lv(t,p/2),0.45));x.font=`500 11px ${T.mono}`;x.fillStyle=col;x.fillText(Math.round(p)+'°',sphG.cx+q[0]*sphG.S+4,sphG.cy-q[2]*sphG.S)}
+function fullCircle(n){const [dd,dip]=planeOf(n);const u=lv(dd-90,0),w=lv(dd,dip),pts=[];for(let a=0;a<=360;a+=4){const r=a*D;pts.push(add(sc(u,Math.cos(r)),sc(w,Math.sin(r))))}return pts}
+function drawSphere(){const {x,w,h}=fit(sphC);const Sz=(Math.min(w,h)/2-34)*0.95,cx=w/2,cy=h/2;sphG={S:Sz,cx,cy};x.clearRect(0,0,w,h);const M=rotM();
+  buildSphere(M);x.save();x.beginPath();x.arc(cx,cy,Sz,0,7);x.clip();x.imageSmoothingEnabled=true;x.drawImage(sphImg,cx-Sz,cy-Sz,2*Sz,2*Sz);x.restore();
+  x.beginPath();x.arc(cx,cy,Sz,0,7);x.strokeStyle=T.line;x.lineWidth=1.2;x.stroke();
+  // reference grid on bowl
+  const gridCol=T.muted;
+  for(let t=0;t<360;t+=30){const pts=[];for(let p=0;p<=90;p+=5)pts.push(lv(t,p));draw3DLine(x,M,pts,gridCol,.6,{alpha:.5})}
+  [30,60].forEach(p=>{const pts=[];for(let t=0;t<=360;t+=6)pts.push(lv(t,p));draw3DLine(x,M,pts,gridCol,.6,{alpha:.5})});
+  {const pts=[];for(let t=0;t<=360;t+=4)pts.push(lv(t,0));draw3DLine(x,M,pts,T.ink,1.4)}
+  draw3DLine(x,M,[[0,0,opt('tUpper')?1.12:0],[0,0,0],[0,0,-1.08]],T.muted,.8,{solidUp:true,alpha:.7});
+  x.font=`600 14px ${T.disp}`;x.textAlign='center';x.textBaseline='middle';
+  [['N',0],['E',90],['S',180],['W',270]].forEach(([s,t])=>{const v=toV(M,sc(lv(t,0),1.13));x.globalAlpha=v[1]>0.25?0.35:1;x.fillStyle=s==='N'?T.danger:T.ink;x.fillText(s,cx+v[0]*Sz,cy-v[2]*Sz)});x.globalAlpha=1;x.textAlign='left';
+  const vf=visible().filter(f=>!f.hidden);
+  if(opt('tDisks')){vf.filter(f=>f.kind==='plane').forEach(f=>{const pts=gcPts(f.n,4);x.beginPath();pts.forEach((p,i)=>{const v=toV(M,p);const q=[cx+v[0]*Sz,cy-v[2]*Sz];i?x.lineTo(...q):x.moveTo(...q)});x.closePath();const po=+$('planeOp').value*0.6;x.fillStyle=S.sel.has(f.id)?T.brass:featColor(f);x.globalAlpha=S.sel.has(f.id)?Math.max(0.18,po+0.1):po;if(x.globalAlpha>0)x.fill();x.globalAlpha=1})}
+  if(opt('tGC'))vf.filter(f=>f.kind==='plane').forEach(f=>{const s=S.sel.has(f.id);draw3DLine(x,M,fullCircle(f.n),s?T.brass:featColor(f),s?2.6:1.2)});
+  statList('sMean').forEach(st=>{const col=stCol(st);
+    if(opt('tMean')&&meanOK(st.planes))draw3DLine(x,M,fullCircle(st.planes.e[0].vec),col,3);});
+  statList('sGirdle').forEach(st=>{const col=stCol(st);
+    if(opt('tGirdle')&&girdleOK(st.planes)){const b=st.planes.e[2].vec;draw3DLine(x,M,[sc(b,-1.12),sc(b,1.12)],col,2);dot3D(x,M,b,4.5,col,T.plot)}});
+  if(opt('tPoles'))vf.forEach(f=>{const v=f.kind==='plane'?f.n:f.v,s=S.sel.has(f.id),col=featColor(f);
+    const lo=+$('poleOp').value;if(s||lo>0)draw3DLine(x,M,[[0,0,0],v],col,s?2.4:.9,{alpha:s?1:lo});if(s&&opt('tGuide'))guide3D(x,M,v,T.brass);dot3D(x,M,v,s?6:3.4,col,s?T.brass:T.plot)});
+  const an=selAnalysis();
+  if(an&&an.inter){draw3DLine(x,M,[opt('tUpper')?sc(an.inter,-1.12):[0,0,0],sc(an.inter,1.12)],T.brass,2.8,{solidUp:true});if(opt('tGuide'))guide3D(x,M,an.inter,T.brass);dot3D(x,M,an.inter,5,T.brass,T.ink)}
+  if(an&&an.plane2l)draw3DLine(x,M,fullCircle(an.plane2l),T.brass,2.4);
+  if(an&&an.stress&&opt('tStress'))an.stress.forEach(v=>dot3D(x,M,v,4,T.danger,T.plot));
+  if(S.hover)dot3D(x,M,S.hover,5,null,T.accent);
+  $('sphRead').textContent=`View: azimuth ${f3(m360(-S.yaw))}, elevation ${Math.round(S.pitch)}°. Drag to rotate. Dashed lines are the upper hemisphere.`;
+}
+
+/* ---------- analysis ---------- */
+let _ss=null;
+function setStats(){if(_ss)return _ss;const out=[];S.setOrder.forEach(name=>{if(!S.sets[name].visible)return;const f=S.feats.filter(q=>q.set===name&&!q.derived);if(!f.length)return;
+  const P=f.filter(q=>q.kind==='plane').map(q=>q.n),L=f.filter(q=>q.kind==='line').map(q=>q.v);out.push({name,np:P.length,nl:L.length,planes:orientStats(P),lines:orientStats(L)})});return _ss=out}
+const LIM={par:10,conjMin:30,conjMax:80,rake:10,girdle:2,girdleK:2,meanK:1,meanElong:5,meanC:1.5,mean2:30,dens:10};
+function pairAng(s){return Math.acos(clamp(Math.sqrt(Math.max(0,2*s.l[0]-1)),0,1))*2/D}
+function meanOK(s){if(!s||s.n<2)return false;if(s.n===2)return pairAng(s)<=LIM.mean2;return s.C>=LIM.meanC&&(s.K>=LIM.meanK||s.l[0]/s.l[1]>=LIM.meanElong)}
+function meanWhy(s,w='poles'){if(s.n===2)return `the two ${w} are ${pairAng(s).toFixed(0)}° apart (limit ${LIM.mean2}°), too far apart to average`;if(s.C<LIM.meanC)return `there is no preferred orientation (Woodcock C ${s.C.toFixed(2)}, needs ${LIM.meanC} or more)`;return `they spread along a wide girdle (Woodcock K ${s.K.toFixed(2)}, below ${LIM.meanK}), which is typical of folded bedding`}
+function fabric(s){return s.C<LIM.meanC?'no preferred orientation':(s.K>1?'cluster':'girdle')}
+function girdleOK(s){return !!s&&s.n>=3&&s.l[1]/s.l[2]>=LIM.girdle&&s.K<LIM.girdleK}
+function selFeats(){return visible().filter(f=>S.sel.has(f.id))}
+function selStats(){const sel=selFeats();const P=sel.filter(f=>f.kind==='plane').map(f=>f.n),L=sel.filter(f=>f.kind==='line').map(f=>f.v);
+  return {name:'Selection',sel:true,np:P.length,nl:L.length,planes:orientStats(P),lines:orientStats(L)}}
+function statList(id){return scope(id)==='sel'?[selStats()]:setStats()}
+const stCol=st=>st.sel?T.accent:setColor(st.name);
+let _an;
+function selAnalysis(){if(_an!==undefined)return _an;const sel=selFeats();_an=null;if(!sel.length)return null;
+  const P=sel.filter(f=>f.kind==='plane'),L=sel.filter(f=>f.kind==='line');const r={P,L,n:sel.length};
+  if(P.length===2&&!L.length){const [a,b]=P;r.type='pp';r.a=a;r.b=b;const c=dot(a.n,b.n);r.angle=Math.acos(Math.min(1,Math.abs(c)))/D;r.ok=r.angle>=LIM.par;
+    if(r.ok){r.inter=inter(a.n,b.n);const sg=c>=0?1:-1;r.bisAcute=norm(add(a.n,sc(b.n,sg)));r.bisObtuse=norm(add(a.n,sc(b.n,-sg)));
+      r.conj=r.angle>=LIM.conjMin&&r.angle<=LIM.conjMax;if(r.conj)r.stress=[lower(r.bisObtuse),r.inter,lower(r.bisAcute)]}}
+  else if(L.length===2&&!P.length){const [a,b]=L;r.type='ll';r.a=a;r.b=b;r.angle=Math.acos(Math.min(1,Math.abs(dot(a.v,b.v))))/D;r.ok=r.angle>=LIM.par;if(r.ok)r.plane2l=norm(cross(a.v,b.v))}
+  else if(P.length===1&&L.length===1){const p=P[0],l=L[0];r.type='pl';r.P=p;r.L=l;const d=dot(l.v,p.n);r.angle=Math.asin(Math.min(1,Math.abs(d)))/D;r.ok=r.angle<=LIM.rake;
+    if(r.ok){const vp=lower(norm(add(l.v,sc(p.n,-d))));r.proj=vp;const st=lv(p.dd-90,0);const cs=dot(st,vp);r.rake=Math.acos(Math.min(1,Math.abs(cs)))/D;r.rakeFrom=cs>=0?m360(p.dd-90):m360(p.dd+90)}}
+  else if(P.length===1&&!L.length){r.type='p1';r.p=P[0]}
+  else if(L.length===1&&!P.length){r.type='l1';r.l=L[0]}
+  else{r.type='multi';r.ps=orientStats(P.map(f=>f.n));r.ls=orientStats(L.map(f=>f.v))}
+  return _an=r}
+let DER=[];
+function addB(kind,vec,note){if(!vec)return '';DER.push({kind,vec,note});return `<button type="button" class="small ghost addb" data-add="${DER.length-1}" title="Adds this ${kind} to the measurement table in set Derived, where you can colour, select or delete it">+ Add ${kind}</button>`}
+function kvHTML(rows){return '<dl class="kv">'+rows.map(([k,v,b])=>`<dt>${esc(k)}</dt><dd>${esc(v)}${b||''}</dd>`).join('')+'</dl>'}
+const noteP=t=>`<p class="note">${esc(t)}</p>`, hintP=t=>`<p class="hint" style="margin:0">${esc(t)}</p>`;
+function featName(f){return `#${f.id} ${f.kind==='plane'?fRHR(f.dd,f.dip):fLn(f.tr,f.pl)} (${f.set})`}
+function selCard(){const an=selAnalysis();let h='<div class="card"><h3>Selection</h3>';
+  if(!an)return h+hintP('Nothing selected. Click poles, lines or great circles on the net, or tick rows in the table. What can be calculated for your selection appears here, with buttons to add the results to your list.')+'</div>';
+  const np=an.P.length,nl=an.L.length,ab=`#${(an.a||{}).id} #${(an.b||{}).id}`;h+=hintP(`${np} plane${np===1?'':'s'} and ${nl} line${nl===1?'':'s'} selected.`);
+  if(an.type==='p1'){const f=an.p;h+=kvHTML([['Plane',featName(f)],['Dip / dip direction',fDD(f.dd,f.dip)],['Pole to the plane',fLv(f.n),addB('line',f.n,`pole of #${f.id}`)]]);h+=hintP('Select a second plane for the intersection and angle, or a line for its rake.')}
+  else if(an.type==='l1'){const f=an.l;h+=kvHTML([['Line',featName(f)],['Plane normal to the line',fPv(f.v),addB('plane',f.v,`plane normal to #${f.id}`)]]);h+=hintP('The normal plane is, for example, the profile plane of a fold when the line is the fold axis. Select a second line for the plane that contains both, or a plane for the rake.')}
+  else if(an.type==='pp'){h+=kvHTML([['Plane A',featName(an.a)],['Plane B',featName(an.b)],['Angle between the planes',`${an.angle.toFixed(1)}° (and ${(180-an.angle).toFixed(1)}°)`]]);
+    if(!an.ok)h+=noteP(`The planes are within ${LIM.par}° of parallel. With normal measurement error their intersection and bisectors are not defined.`);
+    else{h+=kvHTML([['Intersection line',fLv(an.inter),addB('line',an.inter,`intersection ${ab}`)],['Acute bisector plane',fPv(an.bisAcute),addB('plane',an.bisAcute,`acute bisector ${ab}`)],['Obtuse bisector plane',fPv(an.bisObtuse),addB('plane',an.bisObtuse,`obtuse bisector ${ab}`)]]);
+      if(an.conj){h+=`<div class="sub">If the planes are a conjugate fault pair (Anderson)</div>`+kvHTML([['σ1 (bisects the acute angle)',fLv(an.stress[0]),addB('line',an.stress[0],`σ1 ${ab}`)],['σ2 (the intersection)',fLv(an.stress[1])],['σ3 (bisects the obtuse angle)',fLv(an.stress[2]),addB('line',an.stress[2],`σ3 ${ab}`)]])}
+      else h+=noteP(`No stress axes: a conjugate fault pair has an acute angle of about ${LIM.conjMin}° to ${LIM.conjMax}° between the planes, here it is ${an.angle.toFixed(0)}°.`)}}
+  else if(an.type==='ll'){h+=kvHTML([['Line A',featName(an.a)],['Line B',featName(an.b)],['Angle between the lines',an.angle.toFixed(1)+'°']]);
+    if(!an.ok)h+=noteP(`The lines are within ${LIM.par}° of parallel, so the plane that contains both is not defined.`);
+    else h+=kvHTML([['Plane containing both',fPv(an.plane2l),addB('plane',an.plane2l,`plane of ${ab}`)],['Pole of that plane',fLv(an.plane2l)]])}
+  else if(an.type==='pl'){h+=kvHTML([['Plane',featName(an.P)],['Line',featName(an.L)],['Angle line to plane',an.angle.toFixed(1)+'°']]);
+    if(!an.ok)h+=noteP(`No rake: a rake needs the line to lie on the plane, and this line is ${an.angle.toFixed(0)}° out of it (limit ${LIM.rake}°). It is not a lineation on this plane.`);
+    else h+=kvHTML([['Rake (pitch)',`${an.rake.toFixed(1)}° from ${f3(an.rakeFrom)}`],['Line put exactly on the plane',fLv(an.proj),addB('line',an.proj,`#${an.L.id} on #${an.P.id}`)]])}
+  else{if(np===1)h+=noteP('Only 1 plane is selected, so it is left out of the plane statistics.');if(nl===1)h+=noteP('Only 1 line is selected, so it is left out of the line statistics.');
+    if(an.ps)h+=statRows('Selected planes',an.ps,true,'selection');if(an.ls)h+=statRows('Selected lines',an.ls,false,'selection');
+    if(np&&nl)h+=hintP('Planes and lines are calculated apart. For intersection, angle or rake select exactly two items.')}
+  return h+'</div>'}
+function statRows(title,s,isPlane,tag){const [l1,l2,l3]=s.l;const rows=[];let notes='';const what=isPlane?'poles':'lines';
+  if(meanOK(s)){if(isPlane)rows.push(['Mean plane',fPv(s.e[0].vec),addB('plane',s.e[0].vec,`mean plane, ${tag}`)],['Mean pole (e1)',fLv(s.e[0].vec)]);else rows.push(['Mean line (e1)',fLv(s.e[0].vec),addB('line',s.e[0].vec,`mean line, ${tag}`)])}
+  else notes+=noteP(`No mean ${isPlane?'plane':'line'}: ${meanWhy(s,what)}.`);
+  if(girdleOK(s)){if(isPlane)rows.push(['Best-fit girdle',fPv(s.e[2].vec),addB('plane',s.e[2].vec,`girdle, ${tag}`)],['β axis, fold axis (e3)',fLv(s.e[2].vec),addB('line',s.e[2].vec,`β axis, ${tag}`)]);else rows.push(['Best-fit plane of the lines',fPv(s.e[2].vec),addB('plane',s.e[2].vec,`plane of lines, ${tag}`)])}
+  else notes+=noteP(s.n<3?`No ${isPlane?'girdle or β axis':'best-fit plane'}: it needs at least 3 ${isPlane?'planes':'lines'}.`:`No ${isPlane?'girdle or β axis':'best-fit plane'}: the ${what} ${s.C<LIM.meanC?'have no preferred orientation':(s.K>=LIM.girdleK?'form a cluster, not a girdle':'do not lie close to one great circle')} (Woodcock K ${isFinite(s.K)?s.K.toFixed(1):'∞'}, C ${s.C.toFixed(2)}; a girdle needs K below ${LIM.girdleK} and λ2/λ3 of ${LIM.girdle} or more), so the fitted great circle is not defined.`);
+  rows.push(['Eigenvalues λ1, λ2, λ3',`${l1.toFixed(3)}, ${l2.toFixed(3)}, ${l3.toFixed(3)}`],['Woodcock K, C',`${isFinite(s.K)?s.K.toFixed(2):'∞'}, ${s.C.toFixed(2)} (${fabric(s)})`]);
+  if(meanOK(s))rows.push(['Fisher κ, α95',`${isFinite(s.kappa)?s.kappa.toFixed(1):'∞'}, ${s.a95!=null?s.a95.toFixed(1)+'°':'n/a'}`]);
+  return `<div class="sub">${esc(title)}, n = ${s.n}</div>`+kvHTML(rows)+notes}
+function renderResults(){const el=$('results');let h='';DER=[];
+  if(S.addMsg)h+=`<div class="addmsg">${esc(S.addMsg)}</div>`;
+  h+=selCard();
+  setStats().forEach(st=>{h+=`<div class="card"><h3><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${setColor(st.name)};margin-right:6px"></span>${esc(st.name)}</h3>`+kvHTML([['Planes',String(st.np)],['Lines',String(st.nl)]]);
+    if(st.planes)h+=statRows('Planes',st.planes,true,st.name);else if(st.np===1)h+=hintP('One plane only, statistics need at least 2.');
+    if(st.lines)h+=statRows('Lines',st.lines,false,st.name);else if(st.nl===1)h+=hintP('One line only, statistics need at least 2.');h+='</div>'});
+  if(S.dens)h+=`<div class="card"><h3>Density</h3>${kvHTML([['Data points',String(S.dens.n)],['Maximum',S.dens.max.toFixed(2)+' MUD'],['Maximum at',fLv(maxDir()),addB('line',maxDir(),'density maximum')],['k (exp. Kamb)',S.dens.k.toFixed(1)]])}</div>`;
+  el.innerHTML=h;toolStatus()}
+function setSt(id,txt,cls){const e=$(id);e.textContent=txt;e.className='st'+(cls?' '+cls:'')}
+function toolStatus(){const sel=scope('sMean')==='sel'||scope('sGirdle')==='sel'?selStats():null;
+  const pl=n=>`${n} plane${n===1?'':'s'}`;
+  if(scope('sMean')==='sel'){if(sel.np<2)setSt('stMean',`Select at least 2 planes (selected: ${sel.np}).`,'warn');else if(!meanOK(sel.planes))setSt('stMean','No mean plane for the selected planes: '+meanWhy(sel.planes)+'.','warn');else setSt('stMean',`Mean of ${pl(sel.np)} selected.`,'ok')}
+  else{const ss=setStats().filter(q=>q.np>0),ok=ss.filter(q=>meanOK(q.planes));setSt('stMean',ss.length?`For ${ok.length} of ${ss.length} set${ss.length>1?'s':''} with planes.${ok.length<ss.length?' Skipped sets have too few planes, a wide girdle or no preferred orientation.':''}`:'No planes loaded.',ok.length?'ok':'warn')}
+  if(scope('sGirdle')==='sel'){if(sel.np<3)setSt('stGirdle',`Select at least 3 planes (selected: ${sel.np}).`,'warn');else if(!girdleOK(sel.planes))setSt('stGirdle','The selected poles form a cluster, so a girdle is not defined.','warn');else setSt('stGirdle',`Girdle of ${pl(sel.np)} selected, β axis ${fLv(sel.planes.e[2].vec)}.`,'ok')}
+  else{const ss=setStats().filter(q=>q.np>0),ok=ss.filter(q=>girdleOK(q.planes));setSt('stGirdle',ss.length?`For ${ok.length} of ${ss.length} set${ss.length>1?'s':''} with planes.${ok.length<ss.length?' Skipped sets have fewer than 3 planes or a cluster shape.':''}`:'No planes loaded.',ok.length?'ok':'warn')}
+  const Pb=visible().filter(f=>f.kind==='plane'&&(scope('sBeta')==='sel'?S.sel.has(f.id):!f.derived)),pairs=Pb.length*(Pb.length-1)/2;
+  if(Pb.length<2)setSt('stBeta',scope('sBeta')==='sel'?`Select at least 2 planes (selected: ${Pb.length}).`:'Needs at least 2 planes.','warn');else setSt('stBeta',`${pairs} intersection${pairs>1?'s':''} from ${pl(Pb.length)}${scope('sBeta')==='sel'?' selected':''}.${pairs>4000?' Only the first 4000 are drawn.':''}`,'ok');
+  const nD=densVecs().length;if(nD<LIM.dens)setSt('stDens',`Needs at least ${LIM.dens} data points for contouring (now ${nD}).`,'warn');else setSt('stDens',`${nD} data points${S.dens?`, maximum ${S.dens.max.toFixed(1)} MUD`:''}.`,'ok');
+  const an=selAnalysis();if(!an||an.type!=='pp')setSt('stStress','Select exactly 2 planes.','');else if(!an.ok)setSt('stStress','The two planes are almost parallel.','warn');else if(!an.conj)setSt('stStress',`The planes are ${an.angle.toFixed(0)}° apart, outside ${LIM.conjMin}° to ${LIM.conjMax}° for a conjugate pair.`,'warn');else setSt('stStress',`σ1 ${fLv(an.stress[0])}, σ2 ${fLv(an.stress[1])}, σ3 ${fLv(an.stress[2])}.`,'ok');
+  if(S.rotErr){setSt('rotSt',S.rotErr,'warn');return}
+  const ra=rotAxis();setSt('rotSt',ra?`Axis ${fLv(ra.v)}, from ${ra.src}.${opt('tRot')?'':' Tick Rotated grid to draw it.'}`:'No axis: type one and press Apply, select 2 planes or 1 line, or have a set with a clear girdle.',ra?'ok':'warn')}
+function maxDir(){const d=S.dens,N=d.N;let bi=0;for(let i=1;i<d.g.length;i++)if(d.g[i]>d.g[bi])bi=i;const i=bi%(N+1),j=Math.floor(bi/(N+1));return unprojN(-1+2*i/N,1-2*j/N,true)}
+
+/* ---------- table & sets ---------- */
+function renderSets(){$('sets').innerHTML=S.setOrder.map(n=>{const c=S.feats.filter(f=>f.set===n).length;if(!c)return '';return `<span class="chip${S.sets[n].visible?'':' off'}" data-set="${esc(n)}" role="button" tabindex="0" title="Show or hide this set"><i style="background:${setColor(n)}"></i>${esc(n)} (${c})</span>`}).join('')||'<span class="hint">No data yet.</span>'}
+const EYE='<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>',EYEOFF='<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.8" opacity=".45"/><path d="M4 4l16 16" stroke="currentColor" stroke-width="2"/></svg>';
+function renderTable(){$('bRmEx').hidden=!S.feats.some(f=>/\(example\)$/.test(f.set));$('count').textContent=`(${S.feats.length})`;$('bDelSel').textContent=S.sel.size?`Delete selected (${S.sel.size})`:'Delete selected';const nh=S.feats.filter(f=>f.hidden).length;$('eyeAll').hidden=!nh;$('eyeAll').title=`Show all ${nh} hidden measurement${nh===1?'':'s'}`;
+  $('tbody').innerHTML=S.feats.map(f=>{const s=S.sel.has(f.id);const pl=f.kind==='plane';
+    return `<tr class="${s?'sel':''}${f.hidden?' hid':''}" data-id="${f.id}"><td><input type="checkbox" data-sel="${f.id}" ${s?'checked':''} aria-label="Select ${f.id}"></td><td><button type="button" class="eye${f.hidden?' off':''}" data-eye="${f.id}" title="${f.hidden?'Hidden on the net and the 3D view. Still counted in every calculation. Click to show.':'Click to hide on the net and the 3D view. It stays in every calculation.'}" aria-label="${f.hidden?'Show':'Hide'} ${f.id}" aria-pressed="${f.hidden?'false':'true'}">${f.hidden?EYEOFF:EYE}</button></td><td>${f.id}</td><td><input type="color" class="sw" data-col="${f.id}" value="${toHex(featColor(f))}" title="Line colour" aria-label="Line colour for ${f.id}"> <span class="setname" data-setname="${f.id}" title="Double-click to rename or move to another set">${esc(f.set)}</span>${f.note?` <span class="hint">${esc(f.note)}</span>`:''}</td><td>${pl?'Plane':'Line'}</td>
+    <td class="mono">${pl?fRHR(f.dd,f.dip):''}</td><td class="mono">${pl?fDD(f.dd,f.dip):''}</td><td class="mono">${pl?fLv(f.n):fLn(f.tr,f.pl)}</td><td><button class="small ghost" data-del="${f.id}" aria-label="Delete ${f.id}">✕</button></td></tr>`}).join('')}
+
+/* ---------- render orchestration ---------- */
+let dirtyData=true,raf=0;
+function invalidate(data){if(data||(opt('tDens')&&scope('sDens')==='sel'))dirtyData=true;_ss=null;_an=undefined;if(!raf)raf=requestAnimationFrame(renderAll)}
+function renderAll(){raf=0;if(dirtyData){computeDensity();buildHeat();buildContours();drawLegend();renderSets();renderTable();dirtyData=false}renderResults();drawNet();drawSphere()}
+let r3=0;function redraw3D(){if(!r3)r3=requestAnimationFrame(()=>{r3=0;drawSphere()})}
+let rN=0;function redrawNet(){if(!rN)rN=requestAnimationFrame(()=>{rN=0;drawNet()})}
+
+/* ---------- events ---------- */
+function setProj(ea){S.ea=ea;$('pEA').setAttribute('aria-pressed',ea);$('pEQ').setAttribute('aria-pressed',!ea);buildHeat();buildContours();invalidate(false)}
+document.querySelectorAll('.scope').forEach(sg=>sg.addEventListener('click',e=>{const b=e.target.closest('button[data-v]');if(!b)return;const k=sg.dataset.for;SCOPE[k]=b.dataset.v;
+  sg.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));const cb={sMean:'tMean',sGirdle:'tGirdle',sBeta:'tBeta',sDens:'tDens'}[k];$(cb).checked=true;invalidate(k==='sDens')}));
+function applyRot(){const t=$('rotAx').value.trim().match(/^(\d+(?:\.\d+)?)\s*[\/,;\s]\s*(\d+(?:\.\d+)?)$/);
+  if(!t){S.rotErr='Write the axis as trend/plunge, for example 060/15, then press Apply.';invalidate(false);return}
+  const tr=+t[1],pl=+t[2];if(pl>90||tr>360){S.rotErr='Write trend/plunge: trend 0 to 360, then plunge 0 to 90, for example 060/15.';invalidate(false);return}
+  S.rotErr='';S.rotTyped=lv(tr,pl);$('tRot').checked=true;invalidate(false)}
+$('bRot').onclick=applyRot;$('rotAx').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();applyRot()}});
+$('bRotClr').onclick=()=>{S.rotTyped=null;S.rotErr='';$('rotAx').value='';invalidate(false)};
+['bowlOp','planeOp','poleOp'].forEach(id=>$(id).addEventListener('input',()=>{$(id+'V').textContent=Math.round(+$(id).value*100)+'%';redraw3D()}));
+$('pEA').onclick=()=>setProj(true);$('pEQ').onclick=()=>setProj(false);
+['tNet','tGC','tPoles','tMean','tGirdle','tBeta','tStress','tDisks','tLabels','tRot','tGuide','tUpper'].forEach(id=>$(id).addEventListener('change',()=>invalidate(false)));
+['tDens','tCont','dSrc','dSig','dInt','dSty','dMap'].forEach(id=>$(id).addEventListener('change',()=>invalidate(true)));
+
+function netHit(e){const r=netC.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top,G=netG;const x=(mx-G.cx)/G.R,y=(G.cy-my)/G.R;if(x*x+y*y>1.0001)return null;return {g:unprojN(x,y,S.ea),mx,my}}
+netC.addEventListener('pointermove',e=>{const h=netHit(e);if(!h){S.hover=null;$('netRead').textContent='Click a pole, line or great circle to select it.';redraw3D();redrawNet();return}
+  S.hover=h.g;const [t,p]=tp(h.g),[dd,dip]=planeOf(h.g);let txt=`Cursor line ${fLn(t,p)}   Plane with this pole ${fRHR(dd,dip)} (dip ${fDD(dd,dip)})`;
+  if(S.dens){const e2=projN(h.g,true);txt+=`   Density ${sampleD(e2[0],e2[1]).toFixed(2)} MUD`}$('netRead').textContent=txt;redraw3D();redrawNet()});
+netC.addEventListener('pointerleave',()=>{S.hover=null;redraw3D();redrawNet()});
+netC.addEventListener('click',e=>{const h=netHit(e);if(!h)return;let best=null,bd=1e9;
+  visible().filter(f=>!f.hidden).forEach(f=>{const v=f.kind==='plane'?f.n:f.v;const p=P2(v);const dpx=Math.hypot(p[0]-h.mx,p[1]-h.my);if(opt('tPoles')&&dpx<bd&&dpx<9){bd=dpx;best=f}});
+  if(!best&&opt('tGC')){let ba=2.5;visible().filter(f=>f.kind==='plane'&&!f.hidden).forEach(f=>{const a=Math.asin(Math.min(1,Math.abs(dot(h.g,f.n))))/D;if(a<ba){ba=a;best=f}})}
+  if(best){toggleSel(best.id)}});
+function toggleSel(id){S.sel.has(id)?S.sel.delete(id):S.sel.add(id);renderTable();invalidate(false)}
+
+let drag=null;
+sphC.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY};sphC.setPointerCapture(e.pointerId);sphC.classList.add('drag')});
+sphC.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag={x:e.clientX,y:e.clientY};S.yaw+=dx*0.45;S.pitch=clamp(S.pitch+dy*0.45,-90,90);redraw3D()});
+const endDrag=()=>{drag=null;sphC.classList.remove('drag')};sphC.addEventListener('pointerup',endDrag);sphC.addEventListener('pointercancel',endDrag);
+$('vPlan').onclick=()=>{S.yaw=0;S.pitch=90;redraw3D()};$('vObl').onclick=()=>{S.yaw=0;S.pitch=35;redraw3D()};$('vSouth').onclick=()=>{S.yaw=0;S.pitch=0;redraw3D()};
+let spin=0;$('autoRot').addEventListener('change',()=>{if(opt('autoRot')){const st=()=>{S.yaw+=0.35;drawSphere();spin=opt('autoRot')?requestAnimationFrame(st):0};spin=requestAnimationFrame(st)}else cancelAnimationFrame(spin)});
+
+$('bAdd').onclick=()=>{const t=$('manual').value;if(!t.trim()){$('msg').textContent='Type at least one measurement first.';$('msg').className='msg err';return}
+  const r=parseText(t,$('fmt').value,$('setName').value.trim()||'Manual');report(r,'Manual entry');if(r.added)$('manual').value='';invalidate(true)};
+$('bFile').onclick=()=>$('file').click();
+function readFiles(files){[...files].forEach(file=>{const fr=new FileReader();fr.onload=()=>{const stem=file.name.replace(/\.[^.]+$/,'');const r=parseText(String(fr.result),$('fmt').value,$('setName').value.trim()||stem);report(r,file.name);invalidate(true)};fr.readAsText(file)})}
+$('file').addEventListener('change',e=>{readFiles(e.target.files);e.target.value=''});
+const dz=$('drop');['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('over')}));
+['dragleave','drop'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('over')}));dz.addEventListener('drop',e=>{if(e.dataTransfer.files.length)readFiles(e.dataTransfer.files)});
+$('sets').addEventListener('click',e=>{const c=e.target.closest('[data-set]');if(!c)return;const s=S.sets[c.dataset.set];s.visible=!s.visible;if(!s.visible)S.feats.forEach(f=>{if(f.set===c.dataset.set)S.sel.delete(f.id)});renderTable();invalidate(true)});
+$('sets').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.target.click()}});
+let lastRow=null;
+$('tbody').addEventListener('click',e=>{if(e.target.closest('[data-col]')||e.target.closest('input.setin')||e.target.closest('[data-setname]'))return;
+  const ey=e.target.closest('[data-eye]');if(ey){const id=+ey.dataset.eye,f0=S.feats.find(f=>f.id===id),to=!f0.hidden;const ids=S.sel.has(id)&&S.sel.size>1?S.sel:new Set([id]);
+    S.feats.forEach(f=>{if(ids.has(f.id))f.hidden=to});renderTable();invalidate(false);return}const d=e.target.closest('[data-del]');if(d){const id=+d.dataset.del;S.feats=S.feats.filter(f=>f.id!==id);S.sel.delete(id);invalidate(true);return}
+  const tr=e.target.closest('tr[data-id]');if(!tr)return;const id=+tr.dataset.id;const ft=S.feats.find(f=>f.id===id);if(ft&&!S.sets[ft.set].visible&&!S.sel.has(id)){$('msg').textContent=`#${id} belongs to set ${ft.set}, which is switched off. Click its chip above to switch it on before selecting.`;$('msg').className='msg err';renderTable();return}
+  if(e.shiftKey&&lastRow!==null){const ids=S.feats.map(f=>f.id),a=ids.indexOf(lastRow),b=ids.indexOf(id);
+    if(a>=0&&b>=0){const i0=Math.min(a,b),i1=Math.max(a,b);for(let i=i0;i<=i1;i++){const f=S.feats[i];if(S.sets[f.set].visible)S.sel.add(ids[i])}renderTable();invalidate(false);return}}
+  lastRow=id;toggleSel(id)});
+$('tbody').addEventListener('mousedown',e=>{if(e.shiftKey)e.preventDefault()});
+$('tbody').addEventListener('input',e=>{const c=e.target.closest('[data-col]');if(!c)return;const id=+c.dataset.col,val=c.value;
+  const ids=S.sel.has(id)&&S.sel.size>1?[...S.sel]:[id];S.feats.forEach(f=>{if(ids.includes(f.id))f.color=val});
+  if(ids.length>1)document.querySelectorAll('#tbody [data-col]').forEach(el=>{if(ids.includes(+el.dataset.col))el.value=val});invalidate(false)});
+$('tbody').addEventListener('dblclick',e=>{const sp=e.target.closest('[data-setname]');if(!sp)return;e.preventDefault();getSelection&&getSelection().removeAllRanges();
+  const id=+sp.dataset.setname,f0=S.feats.find(f=>f.id===id);if(!f0)return;
+  const dl=document.getElementById('setList')||document.body.appendChild(Object.assign(document.createElement('datalist'),{id:'setList'}));
+  dl.innerHTML=S.setOrder.filter(n=>S.feats.some(f=>f.set===n)).map(n=>`<option value="${esc(n)}"></option>`).join('');
+  const inp=document.createElement('input');inp.type='text';inp.className='setin';inp.value=f0.set;inp.setAttribute('list','setList');inp.setAttribute('aria-label','New set name');sp.replaceWith(inp);inp.focus();inp.select();
+  let done=false;const finish=ok=>{if(done)return;done=true;const name=inp.value.trim();
+    if(!ok||!name||name===f0.set){renderTable();return}
+    const ids=S.sel.has(id)&&S.sel.size>1?new Set(S.sel):new Set([id]);let n=0;
+    S.feats.forEach(f=>{if(ids.has(f.id)){f.set=name;if(name!=='Derived')f.derived=false;n++}});ensureSet(name);S.sets[name].visible=true;
+    $('msg').textContent=`${n} measurement${n>1?'s':''} moved to set ${name}.${name!=='Derived'?' They now count in All data for that set.':''}`;$('msg').className='msg';renderTable();invalidate(true)};
+  inp.addEventListener('keydown',ev=>{if(ev.key==='Enter'){ev.preventDefault();finish(true)}else if(ev.key==='Escape'){ev.preventDefault();finish(false)}ev.stopPropagation()});
+  inp.addEventListener('blur',()=>finish(true))});
+$('eyeAll').onclick=()=>{S.feats.forEach(f=>{f.hidden=false});renderTable();invalidate(false)};
+$('bSelAll').onclick=()=>{S.feats.forEach(f=>{if(S.sets[f.set].visible)S.sel.add(f.id)});renderTable();invalidate(false)};
+document.addEventListener('keydown',e=>{if(e.key!=='Delete'||!S.sel.size)return;const t=e.target;if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'))return;e.preventDefault();$('bDelSel').click()});
+$('bSelNone').onclick=()=>{S.sel.clear();lastRow=null;renderTable();invalidate(false)};
+$('bDelSel').onclick=()=>{if(!S.sel.size)return;S.feats=S.feats.filter(f=>!S.sel.has(f.id));S.sel.clear();invalidate(true)};
+let clearArm=0;$('bClear').onclick=()=>{const b=$('bClear');if(!clearArm){clearArm=setTimeout(()=>{clearArm=0;b.textContent='Clear all'},3000);b.textContent='Click again to clear';return}
+  clearTimeout(clearArm);clearArm=0;b.textContent='Clear all';S.feats=[];S.sel.clear();S.sets={};S.setOrder=[];S.next=1;$('msg').textContent='All measurements removed.';invalidate(true)};
+const isEx=f=>/\(example\)$/.test(f.set);
+$('bRmEx').onclick=()=>{const n=S.feats.filter(isEx).length;S.feats=S.feats.filter(f=>{if(isEx(f)){S.sel.delete(f.id);return false}return true});
+  $('msg').textContent=n?`${n} example measurements removed. Your own data was kept.`:'There is no example data to remove.';$('msg').className='msg';invalidate(true)};
+$('results').addEventListener('click',e=>{const b=e.target.closest('[data-add]');if(!b)return;const c=DER[+b.dataset.add];if(!c)return;
+  const r1=x=>Math.round(x*10)/10;let f;
+  if(c.kind==='plane'){const [dd,dip]=planeOf(c.vec);f={kind:'plane',dd:r1(dd)%360,dip:r1(dip),set:'Derived',note:c.note,derived:true}}else{const [t,p]=tp(c.vec);f={kind:'line',tr:r1(t)%360,pl:r1(p),set:'Derived',note:c.note,derived:true}}
+  addFeat(f);const txt=f.kind==='plane'?`Plane ${fRHR(f.dd,f.dip)} (dip ${fDD(f.dd,f.dip)})`:`Line ${fLn(f.tr,f.pl)}`;
+  S.addMsg=`${txt} added to your list as #${f.id} in set Derived (${c.note}). Derived results are not counted in All data, so they do not change set statistics, density or the β diagram. Select one to use it, for example with a plane for a rake.`;$('msg').textContent=S.addMsg;$('msg').className='msg';clearTimeout(S.addT);S.addT=setTimeout(()=>{S.addMsg='';invalidate(false)},10000);invalidate(true)});
+$('bCopy').onclick=()=>{const txt=$('results').innerText;const b=$('bCopy');
+  const done=()=>{b.textContent='Copied';setTimeout(()=>b.textContent='Copy as text',1500)};
+  const fallback=()=>{const r=document.createRange();r.selectNodeContents($('results'));const s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent='Text selected, press Ctrl+C';setTimeout(()=>b.textContent='Copy as text',2500)};
+  try{navigator.clipboard.writeText(txt).then(done,fallback)}catch(e){fallback()}};
+
+/* ---------- example data (synthetic) ---------- */
+function rng(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function loadExample(){const r=rng(7),gs=()=>{let u=0,v=0;while(!u)u=r();while(!v)v=r();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)};
+  const ax=lv(60,15),e1=norm(cross(ax,[0,0,1])),e2=cross(ax,e1);
+  for(let i=0;i<34;i++){const ph=(-75+150*r())*D;let p=norm(add(add(sc(e1,Math.cos(ph)),sc(e2,Math.sin(ph))),sc([gs(),gs(),gs()],0.07)));const [dd,dip]=planeOf(p);addFeat({kind:'plane',dd:Math.round(dd),dip:Math.round(dip),set:'S0 bedding (example)'})}
+  for(let i=0;i<22;i++)addFeat({kind:'plane',dd:Math.round(m360(150+gs()*8)),dip:Math.round(clamp(78+gs()*6,0,90)),set:'J1 joints (example)'});
+  for(let i=0;i<12;i++)addFeat({kind:'line',tr:Math.round(m360(60+gs()*8)),pl:Math.round(clamp(15+gs()*5,0,90)),set:'L hinge lines (example)'});
+  $('msg').textContent='Example loaded: synthetic fold with axis near 15→060, a joint set and hinge lineations. These are not real measurements. Use Remove example data to delete only them and keep your own.';$('msg').className='msg'}
+
+/* ---------- PNG export ---------- */
+const CREDIT='© 2026 Daniel Castaño Madrigal. Stereonet Workbench V1, designed by Daniel Castaño Madrigal, developed with Claude.';
+function closeMenus(){document.querySelectorAll('.dlmenu').forEach(m=>m.hidden=true);document.querySelectorAll('[data-dl]').forEach(b=>b.setAttribute('aria-expanded','false'))}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-dl]');if(b){const m=b.nextElementSibling,open=m.hidden;closeMenus();m.hidden=!open;b.setAttribute('aria-expanded',String(open));e.stopPropagation();return}
+  const o=e.target.closest('[data-png]');if(o){closeMenus();exportPNG(o.dataset.png,o.dataset.bg);return}if(!e.target.closest('.dlmenu'))closeMenus()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeMenus();$('pngModal').hidden=true}});
+function exportPNG(which,bg){const root=document.documentElement,pT=root.getAttribute('data-theme'),pP=root.getAttribute('data-paper'),hov=S.hover;S.hover=null;
+  if(bg==='white'){root.setAttribute('data-theme','light');root.setAttribute('data-paper','white')}else if(bg==='black'){root.setAttribute('data-theme','dark');root.removeAttribute('data-paper')}
+  readTheme();if(bg==='black'){T.plot='#000000';T.plotRGB=[0,0,0]}buildHeat();S.expScale=2;
+  const src=which==='net'?netC:sphC;which==='net'?drawNet():drawSphere();
+  const out=document.createElement('canvas');out.width=src.width;out.height=src.height;const x=out.getContext('2d');
+  if(bg!=='none'){x.fillStyle=bg==='black'?'#000000':'#ffffff';x.fillRect(0,0,out.width,out.height)}x.drawImage(src,0,0);
+  let url='';try{url=out.toDataURL('image/png')}catch(err){}
+  S.expScale=1;S.hover=hov;if(pT===null)root.removeAttribute('data-theme');else root.setAttribute('data-theme',pT);if(pP===null)root.removeAttribute('data-paper');else root.setAttribute('data-paper',pP);
+  readTheme();invalidate(true);
+  if(!url){$('msg').textContent='The image could not be created in this browser.';return}
+  const name=`${which==='net'?'stereonet':'sphere3d'}_${bg==='none'?'transparent':bg}.png`;$('pngTitle').textContent=name;$('pngImg').src=url;$('pngLink').href=url;$('pngLink').setAttribute('download',name);$('pngModal').hidden=false}
+$('pngClose').onclick=()=>{$('pngModal').hidden=true};$('pngModal').addEventListener('click',e=>{if(e.target.id==='pngModal')$('pngModal').hidden=true});
+function guardCredit(){let f=document.getElementById('credit');if(!f){f=document.createElement('footer');f.id='credit';f.className='credit';document.querySelector('.wrap').appendChild(f)}
+  if(f.textContent!==CREDIT)f.textContent=CREDIT;f.hidden=false;f.removeAttribute('style')}
+new MutationObserver(guardCredit).observe(document.body,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['style','hidden','class']});
+
+/* ---------- boot ---------- */
+function applyTheme(m){const r=document.documentElement;if(m==='white'){r.setAttribute('data-theme','light');r.setAttribute('data-paper','white')}else if(m==='dark'){r.setAttribute('data-theme','dark');r.removeAttribute('data-paper')}else{r.removeAttribute('data-theme');r.removeAttribute('data-paper')}
+  ['thA','thW','thD'].forEach(id=>$(id).setAttribute('aria-pressed',String($(id).dataset.m===m)));try{localStorage.setItem('sw-theme',m)}catch(e){}}
+['thA','thW','thD'].forEach(id=>$(id).addEventListener('click',()=>applyTheme($(id).dataset.m)));
+try{const m=localStorage.getItem('sw-theme');if(m&&m!=='auto')applyTheme(m)}catch(e){}
+readTheme();loadExample();$('tDens').checked=true;$('tGirdle').checked=true;
+const ro=new ResizeObserver(()=>invalidate(false));ro.observe(netC);ro.observe(sphC);
+const mq=matchMedia('(prefers-color-scheme: dark)');const reTheme=()=>{readTheme();invalidate(true)};
+mq.addEventListener?mq.addEventListener('change',reTheme):mq.addListener(reTheme);
+new MutationObserver(reTheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme','data-paper']});
+document.fonts&&document.fonts.ready.then(()=>invalidate(false));
+invalidate(true);
+</script>
+
+</body>
+</html>
